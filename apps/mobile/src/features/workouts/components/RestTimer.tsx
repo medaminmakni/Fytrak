@@ -30,7 +30,7 @@ export function RestTimer({ value, onAdjust, onSkip }: RestTimerProps) {
 
 const styles = StyleSheet.create({
   floatingTimer: { position: "absolute", bottom: 178, alignSelf: "center", backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill, elevation: 10 },
-  timerInfo: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingRight: spacing.md },
+  timerInfo: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingEnd: spacing.md },
   timerBold: { color: colors.primaryText, fontWeight: "900", fontSize: 16 },
   timerActionBtn: { paddingHorizontal: spacing.md, minHeight: 34, justifyContent: "center", alignItems: "center" },
   timerActionText: { color: colors.primaryText, fontWeight: "900", fontSize: 13 },

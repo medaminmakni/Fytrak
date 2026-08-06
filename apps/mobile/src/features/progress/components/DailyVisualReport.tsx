@@ -5,6 +5,7 @@ import { radius, spacing } from "../../../theme/tokens";
 import { Typography } from "../../../components/Typography";
 import { toSafeDate } from "../../../utils/chartFilters";
 import type { ProgressPhoto } from "../../../services/userSession";
+import { colors } from "../../../theme/colors";
 
 type DailyVisualReportProps = {
   todayPhoto?: ProgressPhoto;
@@ -25,14 +26,14 @@ export function DailyVisualReport({ todayPhoto }: DailyVisualReportProps) {
             <Image source={{ uri: todayPhoto.url }} style={styles.todayPhoto} resizeMode="cover" />
           </Pressable>
           <View style={styles.photoMeta}>
-            <Typography variant="label" color="#666">
+            <Typography variant="label" color={colors.textMuted}>
               Snapshot logged at {toSafeDate(todayPhoto.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Typography>
           </View>
         </View>
       ) : (
         <View style={styles.emptyCard}>
-          <Typography variant="label" color="#444">No progress photo logged today</Typography>
+          <Typography variant="label" color={colors.textDim}>No progress photo logged today</Typography>
         </View>
       )}
 
@@ -52,7 +53,7 @@ export function DailyVisualReport({ todayPhoto }: DailyVisualReportProps) {
 
 const styles = StyleSheet.create({
   section: { gap: spacing.md, marginBottom: spacing.xl },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginLeft: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginStart: 4 },
   sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   card: { backgroundColor: "#111", borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: "#222" },
   todayPhoto: { width: "100%", height: 260, borderRadius: radius.lg, backgroundColor: "#161616" },

@@ -4,8 +4,8 @@ import {
   subscribeToDailyMeals,
   subscribeToDailyWorkouts,
   subscribeToUserProfile,
-  subscribeToPrescribedWorkouts,
-  subscribeToPrescribedMeals,
+  subscribeToPrescriptionHistory,
+  subscribeToPrescribedMealHistory,
   subscribeToOpenCheckInTasks,
   subscribeToLatestMetrics,
   subscribeToTraineePrograms,
@@ -18,12 +18,27 @@ import {
   type Program,
   type CheckInTask
 } from "../services/userSession";
-import { getChatThreadId, subscribeToLatestMessage, type ChatThreadSummary } from "../services/chatService";
+import {
+  subscribeToAssignmentThreadId,
+  subscribeToLatestMessage,
+  type ChatThreadSummary,
+} from "../services/chatService";
 import { buildTodayMission } from "../features/retention/todayMission";
-import { toLocalDateKey } from "../utils/dateKeys";
+import { getClientTodayDateKey } from "../utils/dateKeys";
 import { useCurrentUser } from "./useCurrentUser";
-import { useLocalDateKey } from "./useLocalDateKey";
+import { useClientDateKey } from "./useClientDateKey";
 import { Ionicons } from "@expo/vector-icons";
+import { resolvePlanDimension } from "../features/plans/planResolution";
+import {
+  selectUnscheduled,
+  toMealCandidates,
+  toScheduledPrograms,
+  toWorkoutCandidates,
+  type ScheduledPrescribedMeal,
+  type ScheduledPrescribedWorkout,
+  type ScheduledProgramDoc,
+} from "../features/plans/planAdapters";
+import type { ProgramSession } from "../services/programService";
 
 export type DashboardAction = {
   eyebrow: string;
@@ -37,7 +52,6 @@ export type DashboardAction = {
 
 export function useTraineeDashboard() {
   const uid = useCurrentUser();
-  const dateKey = useLocalDateKey();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutLog[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -48,13 +62,14 @@ export function useTraineeDashboard() {
   const [checkInTasks, setCheckInTasks] = useState<CheckInTask[]>([]);
   const [lastMessage, setLastMessage] = useState<ChatThreadSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const dateKey = useClientDateKey(profile?.timezone);
 
   useEffect(() => {
     if (!uid) return;
 
     const unsubMeals = subscribeWithCache<Meal[]>(
       `dailyMeals:${uid}:${dateKey}`,
-      (emit) => subscribeToDailyMeals(uid, emit),
+      (emit) => subscribeToDailyMeals(uid, dateKey, emit),
       setMeals
     );
 
@@ -65,14 +80,14 @@ export function useTraineeDashboard() {
     );
 
     const unsubPrescribed = subscribeWithCache<PrescribedWorkout[]>(
-      `prescribedWorkouts:${uid}`,
-      (emit) => subscribeToPrescribedWorkouts(uid, emit),
+      `prescriptionHistory:${uid}`,
+      (emit) => subscribeToPrescriptionHistory(uid, emit),
       setPrescribed
     );
 
     const unsubPrescribedMeals = subscribeWithCache<PrescribedMeal[]>(
-      `prescribedMeals:${uid}`,
-      (emit) => subscribeToPrescribedMeals(uid, emit),
+      `prescribedMealHistory:${uid}`,
+      (emit) => subscribeToPrescribedMealHistory(uid, emit),
       setPrescribedMeals
     );
 
@@ -104,9 +119,14 @@ export function useTraineeDashboard() {
     );
 
     let unsubChat: (() => void) | undefined;
-    if (profile?.selectedCoachId) {
-      const tid = getChatThreadId(uid, profile.selectedCoachId);
-      unsubChat = subscribeToLatestMessage(tid, setLastMessage);
+    let unsubThread: (() => void) | undefined;
+    if (profile?.activeAssignmentId) {
+      unsubThread = subscribeToAssignmentThreadId(profile.activeAssignmentId, (threadId) => {
+        unsubChat?.();
+        unsubChat = undefined;
+        setLastMessage(null);
+        if (threadId) unsubChat = subscribeToLatestMessage(threadId, setLastMessage);
+      });
     }
 
     return () => {
@@ -119,8 +139,9 @@ export function useTraineeDashboard() {
       unsubMetrics();
       unsubPrograms();
       unsubChat?.();
+      unsubThread?.();
     };
-  }, [uid, dateKey, profile?.selectedCoachId]);
+  }, [uid, dateKey, profile?.activeAssignmentId]);
 
   useEffect(() => {
     if (!uid) return;
@@ -146,12 +167,45 @@ export function useTraineeDashboard() {
     return "Good Evening";
   }, []);
 
+  const scheduledWorkouts = prescribed as ScheduledPrescribedWorkout[];
+  const scheduledMeals = prescribedMeals as ScheduledPrescribedMeal[];
+  const scheduledPrograms = programs as ScheduledProgramDoc[];
+
+  const todayWorkoutPlan = useMemo(() => resolvePlanDimension<
+    ScheduledPrescribedWorkout | ProgramSession,
+    ProgramSession
+  >({
+    dateKey,
+    dailyCandidates: toWorkoutCandidates(scheduledWorkouts),
+    programs: toScheduledPrograms(scheduledPrograms),
+    toProgramPayload: (session) => session.payload,
+  }), [dateKey, prescribed, programs]);
+
+  const todayNutritionPlan = useMemo(() => resolvePlanDimension({
+    dateKey,
+    dailyCandidates: toMealCandidates(scheduledMeals),
+  }), [dateKey, prescribedMeals]);
+
+  const unscheduledWorkouts = useMemo(
+    () => selectUnscheduled(scheduledWorkouts).filter((workout) => workout.isCompleted !== true),
+    [prescribed]
+  );
+  const unscheduledMeals = useMemo(
+    () => selectUnscheduled(scheduledMeals).filter((meal) => meal.isApplied !== true),
+    [prescribedMeals]
+  );
+
   const todayMission = useMemo(() => {
     const today = dateKey;
     const latestMetricDate = metrics[0]?.date;
+    const lastMessageDate = lastMessage?.lastMessageAt
+      ? new Date(lastMessage.lastMessageAt)
+      : null;
 
-    const hasMessagedToday = lastMessage && 
-      toLocalDateKey(new Date(lastMessage.lastMessageAt || "")) === today &&
+    const hasMessagedToday = lastMessage &&
+      lastMessageDate &&
+      !Number.isNaN(lastMessageDate.getTime()) &&
+      getClientTodayDateKey(profile?.timezone, lastMessageDate) === today &&
       lastMessage.lastSenderId === uid;
 
     return buildTodayMission({
@@ -160,22 +214,49 @@ export function useTraineeDashboard() {
       calorieTarget: nutritionStats.target,
       hasCoachAssigned: !!profile?.selectedCoachId,
       hasMessagedToday: !!hasMessagedToday,
-      hasPendingWorkoutPlan: prescribed.length > 0,
-      hasPendingMealPlan: prescribedMeals.length > 0,
+      hasPendingWorkoutPlan:
+        (todayWorkoutPlan.sourceType !== "none" && todayWorkoutPlan.payload.isCompleted !== true)
+        || unscheduledWorkouts.length > 0,
+      hasPendingMealPlan:
+        (todayNutritionPlan.sourceType !== "none" && todayNutritionPlan.payload.isApplied !== true)
+        || unscheduledMeals.length > 0,
       hasBodyMetricToday: latestMetricDate === today,
     });
-  }, [metrics, nutritionStats.current, nutritionStats.target, prescribed.length, prescribedMeals.length, profile?.selectedCoachId, workouts.length, dateKey, lastMessage, uid]);
+  }, [metrics, nutritionStats.current, nutritionStats.target, todayWorkoutPlan.sourceType, todayNutritionPlan.sourceType, unscheduledWorkouts.length, unscheduledMeals.length, profile?.selectedCoachId, profile?.timezone, workouts.length, dateKey, lastMessage, uid]);
 
   const primaryAction = useMemo((): DashboardAction => {
-    if (prescribed.length > 0) {
+    const dailyWorkout = todayWorkoutPlan.sourceType === "daily"
+      && todayWorkoutPlan.payload.isCompleted !== true
+      ? todayWorkoutPlan.payload as ScheduledPrescribedWorkout
+      : null;
+    const standingWorkout = unscheduledWorkouts[0] ?? null;
+    const actionablePrescription = dailyWorkout ?? standingWorkout;
+
+    if (actionablePrescription && workouts.length === 0) {
       return {
-        eyebrow: "Coach assigned",
-        title: prescribed[0].title,
-        subtitle: `${prescribed[0].exercises.length} exercises ready`,
+        eyebrow: dailyWorkout ? "Today's coach plan" : "Unscheduled coach plan",
+        title: actionablePrescription.title,
+        subtitle: `${actionablePrescription.exercises.length} exercises ready`,
         icon: "play",
         actionLabel: "Start session",
         actionType: "workout_prescription",
-        payload: { prescriptionId: prescribed[0].id }
+        payload: { prescriptionId: actionablePrescription.id }
+      };
+    }
+
+    if (
+      todayWorkoutPlan.sourceType === "program"
+      && todayWorkoutPlan.payload.isCompleted !== true
+      && workouts.length === 0
+    ) {
+      return {
+        eyebrow: "Today's program",
+        title: todayWorkoutPlan.payload.title,
+        subtitle: `${todayWorkoutPlan.payload.exercises.length} exercises planned`,
+        icon: "barbell",
+        actionLabel: "Open workouts",
+        actionType: "workout",
+        payload: { programSession: todayWorkoutPlan.payload }
       };
     }
 
@@ -220,7 +301,7 @@ export function useTraineeDashboard() {
       actionLabel: "View progress",
       actionType: "progress"
     };
-  }, [prescribed, workouts.length, nutritionStats.current, nutritionStats.target, profile?.assignmentStatus]);
+  }, [todayWorkoutPlan, unscheduledWorkouts, workouts.length, nutritionStats.current, nutritionStats.target, profile?.assignmentStatus]);
 
   return {
     meals,
@@ -230,6 +311,10 @@ export function useTraineeDashboard() {
     prescribedMeals,
     metrics,
     programs,
+    todayWorkoutPlan,
+    todayNutritionPlan,
+    unscheduledWorkouts,
+    unscheduledMeals,
     checkInTasks,
     isLoading,
     isPremium,

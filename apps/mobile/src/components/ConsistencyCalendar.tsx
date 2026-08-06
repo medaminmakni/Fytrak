@@ -108,8 +108,8 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   title: {
-    color: '#8c8c8c',
-    fontSize: 10,
+    color: colors.textMuted,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1,
   },
@@ -119,10 +119,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   legendText: {
-    color: '#444',
-    fontSize: 8,
+    color: colors.textDim,
+    fontSize: 11,
     fontWeight: '800',
-    marginLeft: 4,
+    marginStart: 4,
   },
   calendar: {
     flexDirection: 'row',

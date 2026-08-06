@@ -31,7 +31,7 @@ export function BirthdayStep({ onNext, onBack }: BirthdayStepProps) {
 
   const renderPicker = (data: any[], current: any, onChange: (v: any) => void, flex: number, label: string, initialIdx: number) => (
     <View style={[styles.pickerCol, { flex }]}>
-      <Typography variant="label" color="#444" style={styles.colLabel}>{label}</Typography>
+      <Typography variant="label" color={colors.textDim} style={styles.colLabel}>{label}</Typography>
       <View style={styles.pickerWrapper}>
         <View style={styles.indicator} pointerEvents="none" />
         <ScrollView

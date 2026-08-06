@@ -38,11 +38,11 @@ export function LevelStep({ onNext, onBack }: LevelStepProps) {
             >
               <View style={styles.row}>
                 <View style={[styles.iBox, selected === l.id && { backgroundColor: colors.primary + '15' }]}>
-                  <Ionicons name={l.icon as any} size={24} color={selected === l.id ? colors.primary : '#444'} />
+                  <Ionicons name={l.icon as any} size={24} color={selected === l.id ? colors.primary : colors.iconFaint} />
                 </View>
                 <View style={styles.info}>
                   <Typography variant="h2" color={selected === l.id ? colors.primary : '#fff'}>{l.title}</Typography>
-                  <Typography variant="label" color="#444">{l.subtitle}</Typography>
+                  <Typography variant="label" color={colors.textDim}>{l.subtitle}</Typography>
                 </View>
                 <View style={styles.bars}>
                   {Array.from({ length: 3 }).map((_, i) => (
@@ -74,6 +74,6 @@ const styles = StyleSheet.create({
   info: { flex: 1 },
   bars: { flexDirection: 'row', gap: 4 },
   bar: { width: 10, height: 4, borderRadius: 2, backgroundColor: '#161616' },
-  desc: { marginTop: 15, lineHeight: 18, fontSize: 13, color: '#666' },
+  desc: { marginTop: 15, lineHeight: 18, fontSize: 13, color: colors.textMuted },
   footer: { padding: 24, paddingBottom: 40 },
 });

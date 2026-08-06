@@ -1,3 +1,8 @@
+// NOTE: This screen is not currently rendered anywhere — RootNavigator always
+// routes trainee profile completion through OnboardingFlow (see
+// navigation/RootNavigator.tsx). It's kept in reserve rather than deleted
+// because its async-submit/error-toast pattern is solid and may be reused;
+// if that's no longer true, delete this file along with this comment.
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View, ScrollView, KeyboardAvoidingView, Platform } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
@@ -73,13 +78,13 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
           {/* Section: Basic Info */}
-          <SectionTitle title="GENERAL STATS" icon="person" />
+          <SectionTitle title="General stats" icon="person" />
           <View style={styles.card}>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Primary Fitness Goal</Text>
               <TextInput
                 placeholder="e.g. Lose fat, Build muscle"
-                placeholderTextColor="#666"
+                placeholderTextColor={colors.textMuted}
                 style={styles.input}
                 value={goal}
                 onChangeText={setGoal}
@@ -94,11 +99,11 @@ export function CompleteProfileScreen({ onComplete }: CompleteProfileScreenProps
             <View style={styles.row}>
               <View style={[styles.inputGroup, { flex: 1 }]}>
                 <Text style={styles.label}>City</Text>
-                <TextInput placeholder="Tunis" placeholderTextColor="#666" style={styles.input} value={city} onChangeText={setCity} />
+                <TextInput placeholder="Tunis" placeholderTextColor={colors.textMuted} style={styles.input} value={city} onChangeText={setCity} />
               </View>
               <View style={[styles.inputGroup, { flex: 1 }]}>
                 <Text style={styles.label}>Country</Text>
-                <TextInput placeholder="Tunisia" placeholderTextColor="#666" style={styles.input} value={country} onChangeText={setCountry} />
+                <TextInput placeholder="Tunisia" placeholderTextColor={colors.textMuted} style={styles.input} value={country} onChangeText={setCountry} />
               </View>
             </View>
 
@@ -184,12 +189,12 @@ function DateButton({ date, onPress }: { date: Date, onPress: () => void }) {
 const styles = StyleSheet.create({
   shellContent: { paddingBottom: 0 },
   scroll: { paddingBottom: 60, marginTop: 10, gap: 16 },
-  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginLeft: 8, marginTop: 8 },
+  sectionHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginStart: 8, marginTop: 8 },
   sectionTitleText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 1 },
   card: { backgroundColor: "#161616", borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#2c2c2e", gap: 16 },
   inputGroup: { gap: 8 },
   row: { flexDirection: "row", gap: 12 },
-  label: { color: "#8c8c8c", fontSize: 14, fontWeight: "700", marginLeft: 2 },
+  label: { color: colors.textMuted, fontSize: 14, fontWeight: "700", marginStart: 2 },
   input: { backgroundColor: "#1c1c1e", borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, color: "#ffffff", fontSize: 15, fontWeight: "600", borderWidth: 1, borderColor: "#2c2c2e" },
   textArea: { minHeight: 80, textAlignVertical: "top", paddingTop: 12 },
   stepperContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 14, borderWidth: 1, borderColor: "#2c2c2e", height: 48, overflow: "hidden" },
@@ -200,12 +205,12 @@ const styles = StyleSheet.create({
   levelRow: { flexDirection: "row", gap: 8 },
   levelPill: { flex: 1, backgroundColor: "#1c1c1e", borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: "#2c2c2e" },
   levelPillActive: { borderColor: colors.primary, backgroundColor: "#22251a" },
-  levelPillText: { color: "#444", fontWeight: "900", fontSize: 10, textAlign: "center" },
+  levelPillText: { color: colors.textDim, fontWeight: "900", fontSize: 11, textAlign: "center" },
   levelPillTextActive: { color: colors.primary },
   finishBtn: { backgroundColor: colors.primary, borderRadius: 18, height: 62, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 12, shadowColor: colors.primary, shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 8 },
   finishBtnText: { color: colors.primaryText, fontWeight: "900", fontSize: 16, letterSpacing: 1 },
   disabledButton: { opacity: 0.5 },
   errorText: { color: "#ff4444", textAlign: "center", fontSize: 14, fontWeight: "600", marginTop: 10 },
   infoBox: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#161616", padding: 16, borderRadius: 20, borderWidth: 1, borderColor: "#2c2c2e", marginTop: 10 },
-  infoText: { flex: 1, color: "#8c8c8c", fontSize: 13, fontWeight: "500", lineHeight: 18 },
+  infoText: { flex: 1, color: colors.textMuted, fontSize: 13, fontWeight: "500", lineHeight: 18 },
 });

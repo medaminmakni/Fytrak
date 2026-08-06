@@ -1,13 +1,20 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Animated, StyleSheet, Text, View, DeviceEventEmitter, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
+import { iconSize, radius, spacing, touchTarget, typography } from '../theme/tokens';
 import { Typography } from './Typography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const ToastEvent = 'SHOW_TOAST';
 
 type ToastType = 'success' | 'error' | 'info' | 'confirm';
+
+export type ToastAction = {
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+};
 
 type ToastConfig = {
   title: string;
@@ -19,6 +26,8 @@ type ToastConfig = {
   confirmLabel?: string;
   cancelLabel?: string;
   confirmDestructive?: boolean;
+  /** Set by `choose`. When present these replace the confirm/cancel pair. */
+  actions?: ToastAction[];
 };
 
 // Global imperative API
@@ -55,150 +64,165 @@ export const ToastService = {
       confirmDestructive: opts.destructive ?? false,
     });
   },
+  /**
+   * A pick-one-of-several prompt, for cases that are a choice rather than a
+   * yes/no — "camera or gallery?". Dismissing runs nothing.
+   */
+  choose: (opts: {
+    title: string;
+    message?: string;
+    options: ToastAction[];
+    cancelLabel?: string;
+  }) => {
+    DeviceEventEmitter.emit(ToastEvent, {
+      title: opts.title,
+      message: opts.message,
+      type: 'confirm' as ToastType,
+      actions: opts.options,
+      cancelLabel: opts.cancelLabel || 'Cancel',
+    });
+  },
+};
+
+const OFFSCREEN_Y = -150;
+const EXIT_DURATION = 220;
+const FADE_DURATION = 220;
+
+/** One live toast. `key` changes per emission so the entrance effect re-runs. */
+type ActiveToast = ToastConfig & { key: number };
+
+let nextToastKey = 0;
+
+const ICON_BY_TYPE: Record<ToastType, keyof typeof Ionicons.glyphMap> = {
+  error: 'alert-circle',
+  info: 'information-circle',
+  confirm: 'help-circle',
+  success: 'checkmark-circle',
 };
 
 export function Toast() {
-  const [visible, setVisible] = useState(false);
-  const [config, setConfig] = useState<ToastConfig>({ title: '', type: 'success' });
-  const translateY = useRef(new Animated.Value(-150)).current;
+  const [active, setActive] = useState<ActiveToast | null>(null);
+  const translateY = useRef(new Animated.Value(OFFSCREEN_Y)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
 
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const callbackRef = useRef<{ onConfirm?: () => void; onCancel?: () => void }>({});
 
-  const hideToast = (runCancel?: boolean) => {
-    if (runCancel && callbackRef.current.onCancel) {
-      callbackRef.current.onCancel();
-    }
-    Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: -150,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setVisible(false);
-      callbackRef.current = {};
-    });
-  };
-
-  const handleConfirm = () => {
-    if (callbackRef.current.onConfirm) {
-      callbackRef.current.onConfirm();
-    }
-    Animated.parallel([
-      Animated.timing(translateY, {
-        toValue: -150,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setVisible(false);
-      callbackRef.current = {};
-    });
-  };
+  /**
+   * Slides the toast out, then runs the caller's callback.
+   *
+   * The order matters and used to be reversed. `onConfirm` on the sign-out
+   * toast calls `logOut()`, which swaps the entire navigation tree — running
+   * that first meant the exit animation was competing with a full remount and
+   * visibly dropped frames. It also immediately emitted a second toast, whose
+   * entrance reset these shared Animated values while the exit was still
+   * running, so the card snapped instead of sliding.
+   */
+  const dismiss = useCallback(
+    (runAfterExit?: () => void) => {
+      const dismissingKey = active?.key;
+      Animated.parallel([
+        Animated.timing(translateY, {
+          toValue: OFFSCREEN_Y,
+          duration: EXIT_DURATION,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 0,
+          duration: FADE_DURATION,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 0,
+          duration: FADE_DURATION,
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        // A newer toast may have taken over mid-exit. Only tear down if the
+        // toast we started dismissing is still the one on screen.
+        if (!finished) return;
+        setActive((current) => (current?.key === dismissingKey ? null : current));
+        callbackRef.current = {};
+        runAfterExit?.();
+      });
+    },
+    [active?.key, translateY, opacity, backdropOpacity],
+  );
 
   useEffect(() => {
     const listener = DeviceEventEmitter.addListener(ToastEvent, (data: ToastConfig) => {
-      const isConfirm = data.type === 'confirm';
-
-      // Store callbacks in ref to avoid stale closures
-      callbackRef.current = {
-        onConfirm: data.onConfirm,
-        onCancel: data.onCancel,
-      };
-
-      setConfig({ ...data, type: data.type || 'success' });
-      setVisible(true);
-
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-
-      translateY.setValue(-150);
-      opacity.setValue(0);
-      backdropOpacity.setValue(0);
-
-      const animations: Animated.CompositeAnimation[] = [
-        Animated.spring(translateY, {
-          toValue: insets.top + 10,
-          useNativeDriver: true,
-          bounciness: 10,
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ];
-
-      if (isConfirm) {
-        animations.push(
-          Animated.timing(backdropOpacity, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          })
-        );
-      }
-
-      Animated.parallel(animations).start();
-
-      // Auto-dismiss only for non-confirm toasts
-      if (!isConfirm) {
-        timeoutRef.current = setTimeout(() => {
-          hideToast();
-        }, data.duration || 3000);
-      }
+      callbackRef.current = { onConfirm: data.onConfirm, onCancel: data.onCancel };
+      setActive({ ...data, type: data.type || 'success', key: nextToastKey++ });
     });
+    return () => listener.remove();
+  }, []);
+
+  /*
+   * The entrance runs here rather than inside the event listener.
+   *
+   * It used to call `.start()` in the same synchronous block as
+   * `setVisible(true)` — so the animation was already running against a view
+   * React had not mounted yet, and the first frames were applied late. That is
+   * the pop you see as the card appears. An effect runs after commit, so the
+   * view exists before the first frame.
+   */
+  const activeKey = active?.key;
+  const isConfirm = active?.type === 'confirm';
+  useEffect(() => {
+    if (!active) return;
+
+    translateY.setValue(OFFSCREEN_Y);
+    opacity.setValue(0);
+    backdropOpacity.setValue(0);
+
+    const entrance = Animated.parallel([
+      Animated.spring(translateY, {
+        toValue: insets.top + spacing.md,
+        useNativeDriver: true,
+        bounciness: 6,
+        speed: 14,
+      }),
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: FADE_DURATION,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: isConfirm ? 1 : 0,
+        duration: FADE_DURATION,
+        useNativeDriver: true,
+      }),
+    ]);
+    entrance.start();
+
+    const timer = isConfirm
+      ? null
+      : setTimeout(() => dismiss(), active.duration ?? 3000);
 
     return () => {
-      listener.remove();
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      entrance.stop();
+      if (timer) clearTimeout(timer);
     };
-  }, [insets.top]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey]);
 
-  if (!visible) return null;
-
-  const isConfirm = config.type === 'confirm';
-
-  const getIcon = () => {
-    switch (config.type) {
-      case 'error': return 'alert-circle';
-      case 'info': return 'information-circle';
-      case 'confirm': return 'help-circle';
-      default: return 'checkmark-circle';
-    }
-  };
+  if (!active) return null;
 
   const getIconColor = () => {
-    switch (config.type) {
-      case 'error': return '#ff4444';
-      case 'info': return '#4da6ff';
-      case 'confirm': return config.confirmDestructive ? '#ff4444' : '#fbbf24';
-      default: return colors.primary;
+    switch (active.type) {
+      case 'error':
+        return colors.danger;
+      case 'info':
+        return colors.info;
+      case 'confirm':
+        return active.confirmDestructive ? colors.danger : colors.warning;
+      default:
+        return colors.primary;
     }
   };
+
+  const config = active;
 
   return (
     <>
@@ -208,21 +232,32 @@ export function Toast() {
           style={[styles.backdrop, { opacity: backdropOpacity }]}
           pointerEvents={isConfirm ? 'auto' : 'none'}
         >
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => hideToast(true)} />
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+            onPress={() => dismiss(callbackRef.current.onCancel)}
+          />
         </Animated.View>
       )}
 
-      <Animated.View style={[
-        styles.container,
-        { transform: [{ translateY }], opacity }
-      ]}>
+      <Animated.View
+        style={[styles.container, { transform: [{ translateY }], opacity }]}
+        accessibilityLiveRegion="polite"
+      >
         <Pressable
-          onPress={isConfirm ? undefined : () => hideToast()}
+          onPress={isConfirm ? undefined : () => dismiss()}
+          accessibilityRole={isConfirm ? undefined : 'button'}
+          accessibilityLabel={isConfirm ? undefined : `${config.title}. Tap to dismiss.`}
           style={[styles.innerContainer, isConfirm && styles.confirmContainer]}
         >
           <View style={styles.topRow}>
             <View style={[styles.iconContainer, { backgroundColor: getIconColor() }]}>
-              <Ionicons name={getIcon()} size={24} color="#000" />
+              <Ionicons
+                name={ICON_BY_TYPE[config.type ?? 'success']}
+                size={iconSize.lg}
+                color={colors.primaryText}
+              />
             </View>
             <View style={styles.content}>
               <Typography variant="h2" style={styles.title}>{config.title}</Typography>
@@ -230,12 +265,49 @@ export function Toast() {
             </View>
           </View>
 
-          {/* Action buttons for confirm toasts */}
-          {isConfirm && (
+          {/*
+            A `choose` prompt stacks its options vertically with a dismiss row
+            underneath. Side-by-side only works for two, and reading three
+            labels across a narrow card is worse than reading them down it.
+          */}
+          {isConfirm && config.actions?.length ? (
+            <View style={styles.buttonColumn}>
+              {config.actions.map((action) => (
+                <Pressable
+                  key={action.label}
+                  style={[
+                    styles.confirmButton,
+                    action.destructive && styles.confirmDestructiveButton,
+                  ]}
+                  accessibilityRole="button"
+                  onPress={() => dismiss(action.onPress)}
+                >
+                  <Text
+                    style={[
+                      styles.confirmButtonText,
+                      action.destructive && styles.confirmDestructiveText,
+                    ]}
+                  >
+                    {action.label}
+                  </Text>
+                </Pressable>
+              ))}
+              <Pressable
+                style={styles.cancelButton}
+                accessibilityRole="button"
+                onPress={() => dismiss()}
+              >
+                <Text style={styles.cancelButtonText}>
+                  {config.cancelLabel || 'Cancel'}
+                </Text>
+              </Pressable>
+            </View>
+          ) : isConfirm ? (
             <View style={styles.buttonRow}>
               <Pressable
                 style={styles.cancelButton}
-                onPress={() => hideToast(true)}
+                accessibilityRole="button"
+                onPress={() => dismiss(callbackRef.current.onCancel)}
               >
                 <Text style={styles.cancelButtonText}>
                   {config.cancelLabel || 'Cancel'}
@@ -246,7 +318,8 @@ export function Toast() {
                   styles.confirmButton,
                   config.confirmDestructive && styles.confirmDestructiveButton,
                 ]}
-                onPress={handleConfirm}
+                accessibilityRole="button"
+                onPress={() => dismiss(callbackRef.current.onConfirm)}
               >
                 <Text style={[
                   styles.confirmButtonText,
@@ -256,7 +329,7 @@ export function Toast() {
                 </Text>
               </Pressable>
             </View>
-          )}
+          ) : null}
         </Pressable>
       </Animated.View>
     </>
@@ -272,84 +345,87 @@ const styles = StyleSheet.create({
   container: {
     position: 'absolute',
     top: 0,
-    left: 20,
-    right: 20,
+    left: spacing.xl,
+    right: spacing.xl,
     zIndex: 99999,
   },
+  /*
+   * The one card in the app that keeps a shadow. It floats over live content
+   * rather than sitting in the page flow, so it needs the depth cue that flat
+   * cards deliberately do not have. The 1px outline is gone.
+   */
   innerContainer: {
-    backgroundColor: '#1c1c1e',
-    borderRadius: 20,
-    padding: 16,
+    backgroundColor: colors.surface,
+    borderRadius: radius.card,
+    padding: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.8,
     shadowRadius: 20,
     elevation: 10,
-    borderWidth: 1,
-    borderColor: '#2c2c2e',
   },
   confirmContainer: {
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: 16,
+    gap: spacing.lg,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: touchTarget.min,
+    height: touchTarget.min,
+    borderRadius: radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 14,
+    marginEnd: spacing.md,
   },
   content: { flex: 1, justifyContent: 'center' },
-  title: { color: '#fff', fontSize: 16 },
-  message: { color: '#8c8c8c', fontSize: 13, marginTop: 4, fontWeight: '600' },
+  title: { color: colors.text },
+  message: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
   buttonRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.md,
+  },
+  buttonColumn: {
+    gap: spacing.sm,
   },
   cancelButton: {
     flex: 1,
-    backgroundColor: '#2c2c2e',
-    borderRadius: 14,
-    paddingVertical: 14,
+    minHeight: touchTarget.min,
+    backgroundColor: colors.surfaceInset,
+    borderRadius: radius.nested,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Sentence case, no letter-spacing — same as every other button in the app.
   cancelButtonText: {
-    color: '#8c8c8c',
-    fontSize: 14,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    ...typography.button,
+    color: colors.text,
   },
   confirmButton: {
     flex: 1,
+    minHeight: touchTarget.min,
     backgroundColor: colors.primary,
-    borderRadius: 14,
-    paddingVertical: 14,
+    borderRadius: radius.nested,
     alignItems: 'center',
     justifyContent: 'center',
   },
   confirmButtonText: {
-    color: '#000',
-    fontSize: 14,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    ...typography.button,
+    color: colors.primaryText,
   },
   confirmDestructiveButton: {
-    backgroundColor: '#ff444420',
-    borderWidth: 1,
-    borderColor: '#ff444450',
+    backgroundColor: colors.dangerMuted,
   },
   confirmDestructiveText: {
-    color: '#ff4444',
+    color: colors.danger,
   },
 });

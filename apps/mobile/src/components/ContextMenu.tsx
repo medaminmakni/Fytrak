@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
     justifyContent: "flex-start",
     alignItems: "flex-end",
     paddingTop: Platform.OS === "ios" ? 90 : 70, // Aligned with the header bottom
-    paddingRight: 20, // Match spacing.xl
+    paddingEnd: 20, // Match spacing.xl
   },
   menu: {
     backgroundColor: "#111111", // Slightly warmer deep charcoal

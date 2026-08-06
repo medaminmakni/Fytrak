@@ -1,6 +1,7 @@
 import React from "react";
 import { View, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { colors } from "../theme/colors";
 
 interface MacroItemProps {
   label: string;
@@ -37,7 +38,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   macroLabel: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -53,7 +54,7 @@ const styles = StyleSheet.create({
   },
   macroValue: {
     color: "#ffffff",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "800",
   },
 });

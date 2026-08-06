@@ -2,7 +2,7 @@ import React from "react";
 import { View, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
-import { spacing, typography } from "../theme/tokens";
+import { iconSize, spacing, typography } from "../theme/tokens";
 
 interface SectionTitleProps {
   title: string;
@@ -12,7 +12,7 @@ interface SectionTitleProps {
 export function SectionTitle({ title, icon }: SectionTitleProps) {
   return (
     <View style={styles.sectionHeader}>
-      <Ionicons name={icon} size={18} color={colors.primary} />
+      <Ionicons name={icon} size={iconSize.md} color={colors.primary} />
       <Text accessibilityRole="header" style={styles.sectionTitleText}>{title}</Text>
     </View>
   );
@@ -26,9 +26,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     marginBottom: spacing.xs,
   },
-  sectionTitleText: { 
+  sectionTitleText: {
     color: colors.text,
-    ...typography.bodySmall,
-    fontWeight: "800",
+    // Was `bodySmall` with the weight pushed to 800 at the call site, which is
+    // a step that does not exist on the scale.
+    ...typography.heading,
+    textTransform: "none",
   },
 });

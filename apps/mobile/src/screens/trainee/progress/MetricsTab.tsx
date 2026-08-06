@@ -1,5 +1,6 @@
+import { ToastService } from "../../../components/Toast";
 import React, { useState } from "react";
-import { ScrollView, StyleSheet, View, Pressable, TextInput, Alert, Modal, ActivityIndicator, FlatList } from "react-native";
+import { ScrollView, StyleSheet, View, Pressable, TextInput, Modal, ActivityIndicator, FlatList } from "react-native";
 import { colors } from "../../../theme/colors";
 import { spacing } from "../../../theme/tokens";
 import { Typography } from "../../../components/Typography";
@@ -28,13 +29,17 @@ export function MetricsTab() {
 
   const handleLogMetric = async () => {
     if (!newWeight || isNaN(Number(newWeight))) {
-      Alert.alert("Invalid", "Please enter weight.");
+      ToastService.error("Invalid", "Please enter weight.");
       return;
     }
     if (!uid) return;
     try {
       setIsSaving(true);
-      await saveBodyMetric(uid, { weight: Number(newWeight), bodyFat: newBodyFat ? Number(newBodyFat) : undefined });
+      await saveBodyMetric(
+        uid,
+        { weight: Number(newWeight), bodyFat: newBodyFat ? Number(newBodyFat) : undefined },
+        userProfile?.timezone
+      );
       setNewWeight(""); setNewBodyFat("");
     } catch (error) { console.error(error); } finally { setIsSaving(false); }
   };
@@ -43,7 +48,7 @@ export function MetricsTab() {
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
       <View style={styles.header}>
         <Typography variant="h2">Metrics</Typography>
-        <Typography variant="bodySmall" color="#666">Body composition logs</Typography>
+        <Typography variant="bodySmall" color={colors.textMuted}>Body composition logs</Typography>
       </View>
 
       <View style={styles.card}>
@@ -55,7 +60,7 @@ export function MetricsTab() {
         </View>
         <View style={styles.metricInputRow}>
           <View style={styles.stepperContainer}>
-            <Typography variant="label" color="#8c8c8c" style={styles.inputLabel}>Weight (kg)</Typography>
+            <Typography variant="label" color={colors.textMuted} style={styles.inputLabel}>Weight (kg)</Typography>
             <View style={styles.stepper}>
               <Pressable style={styles.stepBtn} onPress={() => setNewWeight(prev => (Math.max(0, (Number(prev) || Number(metrics[0]?.weight) || 70) - 0.5)).toString())}>
                 <Ionicons name="remove" size={18} color="#fff" />
@@ -66,7 +71,7 @@ export function MetricsTab() {
                 value={newWeight}
                 onChangeText={setNewWeight}
                 placeholder={metrics[0]?.weight?.toString() || "0.0"}
-                placeholderTextColor="#444"
+                placeholderTextColor={colors.textDim}
               />
               <Pressable style={styles.stepBtn} onPress={() => setNewWeight(prev => ((Number(prev) || Number(metrics[0]?.weight) || 70) + 0.5).toString())}>
                 <Ionicons name="add" size={18} color="#fff" />
@@ -79,10 +84,10 @@ export function MetricsTab() {
         </View>
 
         <View style={styles.secondaryInputRow}>
-          <Typography variant="label" color="#444">BODY FAT UPDATE (OPTIONAL)</Typography>
+          <Typography variant="label" color={colors.textDim}>BODY FAT UPDATE (OPTIONAL)</Typography>
           <View style={styles.smallStepper}>
             <Pressable onPress={() => setNewBodyFat(prev => (Math.max(0, (Number(prev) || 15) - 0.5)).toString())}>
-              <Ionicons name="remove-circle-outline" size={20} color="#666" />
+              <Ionicons name="remove-circle-outline" size={20} color={colors.iconFaint} />
             </Pressable>
             <TextInput
               style={styles.smallStepInput}
@@ -93,7 +98,7 @@ export function MetricsTab() {
               placeholderTextColor="#333"
             />
             <Pressable onPress={() => setNewBodyFat(prev => ((Number(prev) || 15) + 0.5).toString())}>
-              <Ionicons name="add-circle-outline" size={20} color="#666" />
+              <Ionicons name="add-circle-outline" size={20} color={colors.iconFaint} />
             </Pressable>
           </View>
         </View>
@@ -101,12 +106,12 @@ export function MetricsTab() {
 
       <View style={styles.summaryCard}>
         <View style={styles.summaryItem}>
-          <Typography variant="label" color="#666">BMI Index</Typography>
+          <Typography variant="label" color={colors.textMuted}>BMI Index</Typography>
           <Typography variant="metric">{calculateBMI()}</Typography>
         </View>
         <View style={styles.divider} />
         <View style={styles.summaryItem}>
-          <Typography variant="label" color="#666">Body Fat</Typography>
+          <Typography variant="label" color={colors.textMuted}>Body Fat</Typography>
           <Typography variant="metric">{metrics[0]?.bodyFat ? `${metrics[0].bodyFat}%` : '--'}</Typography>
         </View>
       </View>
@@ -118,7 +123,7 @@ export function MetricsTab() {
             <View key={item.id || idx} style={styles.historyRow}>
               <View>
                 <Typography variant="body" style={{ fontWeight: "700" }}>{item.weight} kg</Typography>
-                <Typography variant="label" color="#666">{new Date(item.date).toLocaleDateString()}</Typography>
+                <Typography variant="label" color={colors.textMuted}>{new Date(item.date).toLocaleDateString()}</Typography>
               </View>
               {item.bodyFat && (
                 <View style={styles.historyBf}>
@@ -135,9 +140,9 @@ export function MetricsTab() {
           <View style={styles.estimateBox}>
             <View style={styles.modalHeader}>
               <Typography variant="h2">Estimate Body Fat</Typography>
-              <Pressable onPress={() => setIsBFModalVisible(false)}><Ionicons name="close" size={24} color="#8c8c8c" /></Pressable>
+              <Pressable onPress={() => setIsBFModalVisible(false)}><Ionicons name="close" size={24} color={colors.textMuted} /></Pressable>
             </View>
-            <Typography variant="bodySmall" color="#8c8c8c" style={{ marginBottom: 20 }}>
+            <Typography variant="bodySmall" color={colors.textMuted} style={{ marginBottom: 20 }}>
               Select the category that best describes your look:
             </Typography>
             <ScrollView style={{ maxHeight: 400 }}>
@@ -191,10 +196,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   inputLabel: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
     letterSpacing: 1,
-    marginLeft: 4,
+    marginStart: 4,
   },
   stepper: {
     flexDirection: "row",

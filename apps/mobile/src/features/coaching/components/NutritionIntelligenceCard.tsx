@@ -12,9 +12,11 @@ type NutritionIntelligenceCardProps = {
   meals: Meal[];
   targets: MacroTargets;
   totals: { calories: number; protein: number; carbs: number; fats: number };
+  /** False when the trainee has no macro plan yet — never show invented targets. */
+  hasTargets?: boolean;
 };
 
-export function NutritionIntelligenceCard({ meals, targets, totals }: NutritionIntelligenceCardProps) {
+export function NutritionIntelligenceCard({ meals, targets, totals, hasTargets = true }: NutritionIntelligenceCardProps) {
   return (
     <View style={styles.section}>
       <View style={styles.header}>
@@ -23,6 +25,17 @@ export function NutritionIntelligenceCard({ meals, targets, totals }: NutritionI
         </View>
         <Typography variant="label" color={colors.primary} style={styles.title}>NUTRITION SUMMARY</Typography>
       </View>
+      {!hasTargets ? (
+        <View style={styles.card}>
+          <Typography variant="bodySmall" color={colors.textMuted}>
+            No macro plan set for this client yet. Prescribe a meal plan to set
+            their daily targets.
+          </Typography>
+          <Typography variant="label" color={colors.textFaint} style={{ marginTop: spacing.sm }}>
+            LOGGED TODAY: {totals.calories} KCAL · P {totals.protein} · C {totals.carbs} · F {totals.fats}
+          </Typography>
+        </View>
+      ) : (
       <View style={styles.card}>
         <View style={styles.ringContainer}>
           <NutritionRing current={totals.calories} target={targets.calories} />
@@ -45,15 +58,16 @@ export function NutritionIntelligenceCard({ meals, targets, totals }: NutritionI
           </View>
         )}
       </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   section: { gap: spacing.md },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginStart: 4 },
   iconBox: { width: 26, height: 26, borderRadius: radius.xs, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  title: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
   card: { backgroundColor: colors.surfaceMuted, borderRadius: radius["2xl"], padding: spacing.xl, borderWidth: 1, borderColor: colors.borderStrong },
   ringContainer: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   ringSideStats: { flex: 1 },

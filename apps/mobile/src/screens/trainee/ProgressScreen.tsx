@@ -18,7 +18,7 @@ export function ProgressScreen() {
   return (
     <ScreenShell 
       title="Progress" 
-      subtitle="Transformation Tracking"
+      subtitle="Transformation tracking"
       contentStyle={styles.shellContent}
     >
       <View style={styles.tabBar}>
@@ -87,13 +87,13 @@ const styles = StyleSheet.create({
   },
   tabBtn: {
     paddingVertical: 12,
-    marginRight: 24,
+    marginEnd: 24,
     position: "relative",
   },
   tabBtnActive: {
   },
   tabText: {
-    color: "#666",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "900",
     letterSpacing: 1,

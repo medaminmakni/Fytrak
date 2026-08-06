@@ -1,5 +1,6 @@
+import { ViewerBackButton } from "./ViewerBackButton";
 import React, { useState, useRef } from 'react';
-import { StyleSheet, View, Image, PanResponder, Animated, Text, Pressable, Dimensions } from 'react-native';
+import { StyleSheet, View, Image, PanResponder, Animated, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 
@@ -29,9 +30,7 @@ export function CompareSlider({ beforeUri, afterUri, onClose, beforeDate, afterD
 
   return (
     <View style={styles.container}>
-      <Pressable onPress={onClose} style={styles.closeBtn}>
-        <Ionicons name="close" size={28} color="#ff4444" />
-      </Pressable>
+      <ViewerBackButton onPress={onClose} accessibilityLabel="Close comparison" />
 
       <View style={styles.sliderContainer}>
         {/* AFTER IMAGE (Background) */}
@@ -72,20 +71,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000',
   },
-  closeBtn: {
-    position: 'absolute',
-    right: 25,
-    top: 10,
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 68, 68, 0.25)',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 68, 68, 0.6)',
-    zIndex: 100,
-  },
+  // closeBtn removed — ViewerBackButton owns the dismiss control now.
   sliderContainer: {
     flex: 1,
     overflow: 'hidden',
@@ -149,7 +135,7 @@ const styles = StyleSheet.create({
   labelText: {
     color: colors.primary,
     fontWeight: '900',
-    fontSize: 10,
+    fontSize: 11,
     letterSpacing: 1,
   },
   dateText: {

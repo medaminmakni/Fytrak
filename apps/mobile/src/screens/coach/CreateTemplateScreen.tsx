@@ -1,3 +1,4 @@
+import { ToastService } from "../../components/Toast";
 import { useEffect, useState } from "react";
 import {
     StyleSheet,
@@ -6,7 +7,6 @@ import {
     ScrollView,
     TextInput,
     Pressable,
-    Alert,
     ActivityIndicator
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
@@ -19,7 +19,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 export function CreateTemplateScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation();
-    const { type, template } = route.params; // template is present if editing
+    const { type = "workout", template } = route.params ?? {}; // template is present if editing
 
     const [title, setTitle] = useState(template?.title || "");
     const [exercises, setExercises] = useState(template?.data?.exercises || [
@@ -40,7 +40,7 @@ export function CreateTemplateScreen() {
 
     const handleSave = async () => {
         if (!title.trim()) {
-            Alert.alert("Missing Title", "Please give this template a name.");
+            ToastService.error("Missing Title", "Please give this template a name.");
             return;
         }
 
@@ -56,18 +56,20 @@ export function CreateTemplateScreen() {
                     title: title.trim(),
                     data: templateData
                 });
-                Alert.alert("Success", "Template updated!", [{ text: "OK", onPress: () => navigation.goBack() }]);
+                ToastService.success("Template updated", "Your library is up to date.");
+                    navigation.goBack();
             } else {
                 await saveCoachTemplate(user.uid, {
                     title: title.trim(),
                     type,
                     data: templateData
                 });
-                Alert.alert("Success", "Template saved to library!", [{ text: "OK", onPress: () => navigation.goBack() }]);
+                ToastService.success("Template saved", "You can reuse it from your library.");
+                    navigation.goBack();
             }
         } catch (error) {
             console.error(error);
-            Alert.alert("Error", "Failed to save template.");
+            ToastService.error("Error", "Failed to save template.");
         } finally {
             setIsSubmitting(false);
         }
@@ -85,7 +87,7 @@ export function CreateTemplateScreen() {
                     <TextInput
                         style={styles.titleInput}
                         placeholder={`e.g. ${type === "workout" ? "Leg Day Power" : "Post-Workout Fuel"}`}
-                        placeholderTextColor="#444"
+                        placeholderTextColor={colors.textDim}
                         value={title}
                         onChangeText={setTitle}
                     />
@@ -108,7 +110,7 @@ export function CreateTemplateScreen() {
                                 <TextInput
                                     style={styles.exNameInput}
                                     placeholder="Exercise Name"
-                                    placeholderTextColor="#666"
+                                    placeholderTextColor={colors.textMuted}
                                     value={ex.name}
                                     onChangeText={(v) => updateExercise(idx, "name", v)}
                                 />
@@ -154,7 +156,7 @@ export function CreateTemplateScreen() {
                         <TextInput
                             style={[styles.exNameInput, { height: 100, textAlignVertical: "top" }]}
                             placeholder="e.g. 200g Grilled Chicken..."
-                            placeholderTextColor="#666"
+                            placeholderTextColor={colors.textMuted}
                             multiline
                             value={mealData.description}
                             onChangeText={(v) => setMealData({ ...mealData, description: v })}
@@ -216,11 +218,11 @@ const styles = StyleSheet.create({
     titleInput: { color: "#ffffff", fontSize: 20, fontWeight: "800", paddingVertical: 8 },
     exerciseCard: { backgroundColor: "#1c1c1e", borderRadius: 20, padding: 20, gap: 16, borderWidth: 1, borderColor: "#2c2c2e" },
     exHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    exNumber: { color: "#444", fontSize: 12, fontWeight: "900" },
+    exNumber: { color: colors.textDim, fontSize: 12, fontWeight: "900" },
     exNameInput: { backgroundColor: "#161616", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: "#ffffff", fontSize: 16, fontWeight: "700", borderWidth: 1, borderColor: "#2c2c2e" },
     paramGrid: { flexDirection: "row", gap: 12 },
     paramItem: { flex: 1, gap: 6 },
-    paramLabel: { color: "#666", fontSize: 10, fontWeight: "900", textAlign: "center" },
+    paramLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "900", textAlign: "center" },
     paramInput: { backgroundColor: "#161616", borderRadius: 10, paddingVertical: 10, textAlign: "center", color: colors.primary, fontSize: 15, fontWeight: "800", borderWidth: 1, borderColor: "#2c2c2e" },
     addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, gap: 10, backgroundColor: "#161616", borderRadius: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#333" },
     addBtnText: { color: colors.primary, fontWeight: "900", fontSize: 13 },

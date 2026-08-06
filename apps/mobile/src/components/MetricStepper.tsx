@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     marginBottom: 12 
   },
   label: { 
-    color: "#8c8c8c", 
+    color: colors.textMuted, 
     fontSize: 14, 
     fontWeight: "600", 
     marginBottom: 4 

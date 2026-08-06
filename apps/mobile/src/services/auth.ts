@@ -6,7 +6,21 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
 } from "firebase/auth";
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  isSuccessResponse,
+  statusCodes,
+} from "@react-native-google-signin/google-signin";
+import { AccessToken, LoginManager } from "react-native-fbsdk-next";
 import { auth } from "../config/firebase";
+import { appEnv } from "../config/env";
+import { clearSubscriptionCache } from "../data/subscriptions/subscriptionCache";
+
+GoogleSignin.configure({
+  webClientId: appEnv.google.webClientId,
+  offlineAccess: false,
+});
 
 const firebaseErrorMap: Record<string, string> = {
   "auth/invalid-email": "Please enter a valid email address.",
@@ -58,29 +72,76 @@ export const signUpWithEmailPassword = async (
   }
 };
 
-export const signInWithGoogleIdToken = async (idToken: string): Promise<void> => {
+export const signInWithGoogle = async (): Promise<void> => {
   try {
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    const result = await GoogleSignin.signIn();
+
+    if (!isSuccessResponse(result)) {
+      throw new Error("Google sign-in was cancelled.");
+    }
+
+    const idToken = result.data.idToken;
+    if (!idToken) {
+      throw new Error("Google did not return a valid identity token.");
+    }
+
     const credential = GoogleAuthProvider.credential(idToken);
     await signInWithCredential(auth, credential);
   } catch (error) {
+    if (error instanceof Error && !isErrorWithCode(error)) {
+      throw error;
+    }
+
+    if (isErrorWithCode(error)) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        throw new Error("Google sign-in was cancelled.");
+      }
+      if (error.code === statusCodes.IN_PROGRESS) {
+        throw new Error("Google sign-in is already in progress.");
+      }
+      if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        throw new Error("Google Play Services is unavailable or needs an update.");
+      }
+    }
+
     throw mapAuthError(error);
   }
 };
 
-export const signInWithFacebookAccessToken = async (accessToken: string): Promise<void> => {
+export const signInWithFacebook = async (): Promise<void> => {
   try {
-    const credential = FacebookAuthProvider.credential(accessToken);
+    const result = await LoginManager.logInWithPermissions(["public_profile", "email"]);
+
+    if (result.isCancelled) {
+      throw new Error("Facebook sign-in was cancelled.");
+    }
+
+    const tokenData = await AccessToken.getCurrentAccessToken();
+    if (!tokenData?.accessToken) {
+      throw new Error("Facebook did not return a valid access token.");
+    }
+
+    const credential = FacebookAuthProvider.credential(tokenData.accessToken);
     await signInWithCredential(auth, credential);
   } catch (error) {
+    if (error instanceof Error && error.message.startsWith("Facebook ")) {
+      throw error;
+    }
     throw mapAuthError(error);
   }
 };
 
 export const logOut = async (): Promise<void> => {
   try {
-    console.log("[AuthService] Attempting to sign out...");
+    // Tear down every shared Firestore listener BEFORE signing out. Otherwise
+    // listeners belonging to the previous account keep running against a
+    // now-unauthenticated session, immediately start returning
+    // permission-denied, and any screen still mounted caches that failure.
+    clearSubscriptionCache();
     await auth.signOut();
-    console.log("[AuthService] Sign out successful.");
+    await GoogleSignin.signOut().catch(() => null);
+    LoginManager.logOut();
   } catch (error) {
     console.error("[AuthService] Logout error:", error);
     throw mapAuthError(error);

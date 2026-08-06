@@ -18,6 +18,18 @@ service cloud.firestore {
       return getAfter(/databases/$(database)/documents/users/$(userId));
     }
 
+    function coachRequestAfter(traineeId, coachId) {
+      return getAfter(/databases/$(database)/documents/coachRequests/$(traineeId + "_" + coachId));
+    }
+
+    function assignmentAfter(assignmentId) {
+      return getAfter(/databases/$(database)/documents/assignments/$(assignmentId));
+    }
+
+    function threadAfter(threadId) {
+      return getAfter(/databases/$(database)/documents/chatThreads/$(threadId));
+    }
+
     function isAssignedCoach(userId) {
       return isSignedIn()
         && userDoc(userId).data.selectedCoachId == request.auth.uid
@@ -39,10 +51,252 @@ service cloud.firestore {
         "profileImageUrl",
         "profileCompleted",
         "profile",
+        "coachProfile",
         "macroTargets",
         "workoutProfileCompleted",
         "nutritionProfileCompleted",
         "updatedAt"
+      ]);
+    }
+
+    // Automatic timezone capture is a one-time, narrowly scoped profile
+    // update. Keeping it separate from ownerCanUpdateProfile prevents clients
+    // from changing assignment or other protected account fields alongside it.
+    function ownerCanCaptureTimezone() {
+      return changedUserKeys().hasOnly([
+          "timezone",
+          "timezoneSource",
+          "timezoneCapturedAt",
+          "updatedAt"
+        ])
+        && (!resource.data.keys().hasAny(["timezone"]) || resource.data.timezone == null)
+        && request.resource.data.timezone is string
+        && request.resource.data.timezone.size() > 0
+        && request.resource.data.timezone.size() <= 100
+        && request.resource.data.timezoneSource == "captured"
+        && request.resource.data.timezoneCapturedAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function ownerCanRefreshActivitySummary() {
+      return changedUserKeys().hasOnly(["clientSummary"])
+        && request.resource.data.clientSummary
+          .diff(resource.data.get("clientSummary", {})).affectedKeys().hasOnly([
+            "workoutsLast7Days", "lastWorkoutAt", "mealsLast7Days",
+            "avgDailyProtein", "lastMealAt", "updatedAt"
+          ])
+        && request.resource.data.clientSummary.updatedAt == request.time;
+    }
+
+    // V0 has no trusted runtime backend. Relationship transitions therefore
+    // use atomic client batches and every document validates the companion
+    // writes with getAfter(). No single document can be changed in isolation.
+    function ownerCanOpenCoachRequest(userId) {
+      let coachId = request.resource.data.selectedCoachId;
+      let requestAfter = coachRequestAfter(userId, coachId);
+      return isOwner(userId)
+        && resource.data.get("assignmentStatus", "unassigned") != "assigned"
+        && changedUserKeys().hasOnly([
+          "assignmentStatus", "selectedCoachId", "selectedCoachName",
+          "activeAssignmentId", "updatedAt"
+        ])
+        && request.resource.data.assignmentStatus == "pending"
+        && coachId is string
+        && request.resource.data.selectedCoachName is string
+        && request.resource.data.activeAssignmentId == null
+        && userDoc(coachId).data.role == "coach"
+        && requestAfter.data.traineeId == userId
+        && requestAfter.data.coachId == coachId
+        && requestAfter.data.status == "pending"
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function ownerCanCancelCoachRequest(userId) {
+      let coachId = resource.data.selectedCoachId;
+      let requestAfter = coachRequestAfter(userId, coachId);
+      return isOwner(userId)
+        && resource.data.assignmentStatus == "pending"
+        && coachId is string
+        && changedUserKeys().hasOnly([
+          "assignmentStatus", "selectedCoachId", "selectedCoachName",
+          "activeAssignmentId", "updatedAt"
+        ])
+        && request.resource.data.assignmentStatus == "unassigned"
+        && request.resource.data.selectedCoachId == null
+        && request.resource.data.selectedCoachName == null
+        && request.resource.data.activeAssignmentId == null
+        && requestAfter.data.status == "cancelled"
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function coachCanResolveUserRequest(userId) {
+      let coachId = request.auth.uid;
+      let requestAfter = coachRequestAfter(userId, coachId);
+      let accepted = requestAfter.data.status == "accepted";
+      let rejected = requestAfter.data.status == "rejected";
+      return isSignedIn()
+        && resource.data.assignmentStatus == "pending"
+        && resource.data.selectedCoachId == coachId
+        && changedUserKeys().hasOnly([
+          "assignmentStatus", "selectedCoachId", "selectedCoachName",
+          "activeAssignmentId", "updatedAt"
+        ])
+        && requestAfter.data.traineeId == userId
+        && requestAfter.data.coachId == coachId
+        && (
+          (accepted
+            && request.resource.data.assignmentStatus == "assigned"
+            && request.resource.data.selectedCoachId == coachId
+            && request.resource.data.activeAssignmentId is string
+            && assignmentAfter(request.resource.data.activeAssignmentId).data.traineeId == userId
+            && assignmentAfter(request.resource.data.activeAssignmentId).data.coachId == coachId
+            && assignmentAfter(request.resource.data.activeAssignmentId).data.status == "active"
+            && assignmentAfter(request.resource.data.activeAssignmentId).data.sourceRequestId == userId + "_" + coachId
+            && threadAfter(request.resource.data.activeAssignmentId).data.assignmentId == request.resource.data.activeAssignmentId
+            && threadAfter(request.resource.data.activeAssignmentId).data.status == "active")
+          ||
+          (rejected
+            && request.resource.data.assignmentStatus == "rejected"
+            && request.resource.data.selectedCoachId == null
+            && request.resource.data.selectedCoachName == null
+            && request.resource.data.activeAssignmentId == null)
+        )
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function participantCanDetachEndedAssignment(userId) {
+      let assignmentId = resource.data.activeAssignmentId;
+      return isSignedIn()
+        && assignmentId is string
+        && (request.auth.uid == userId || request.auth.uid == resource.data.selectedCoachId)
+        && changedUserKeys().hasOnly([
+          "assignmentStatus", "selectedCoachId", "selectedCoachName",
+          "activeAssignmentId", "updatedAt"
+        ])
+        && assignmentAfter(assignmentId).data.status == "ended"
+        && request.resource.data.assignmentStatus == "unassigned"
+        && request.resource.data.selectedCoachId == null
+        && request.resource.data.selectedCoachName == null
+        && request.resource.data.activeAssignmentId == null
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function ownerCanCreateDailyActivity(userId, clientDateKey) {
+      return isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          "clientDateKey", "timezone", "traineeId", "hasActivity",
+          "hasWorkout", "hasMeals", "hasWater", "hasMetrics", "hasPhoto",
+          "lastActivityAt", "updatedAt", "schemaVersion"
+        ])
+        && request.resource.data.clientDateKey == clientDateKey
+        && request.resource.data.traineeId == userId
+        && request.resource.data.hasActivity == true
+        && request.resource.data.keys().hasAny([
+          "hasWorkout", "hasMeals", "hasWater", "hasMetrics", "hasPhoto"
+        ])
+        && request.resource.data.lastActivityAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.schemaVersion == 1;
+    }
+
+    // Covers both directions: logging something (a flag goes true) and deleting
+    // the last item of a kind (that flag goes false).
+    //
+    // `hasActivity` is therefore NOT pinned to true: a day whose every log has
+    // been deleted must be able to report no activity. It is pinned to the OR of
+    // the five metadata flags so the marker remains internally consistent.
+    //
+    // The review fields are absent from this list, so deletion reconciliation
+    // can never erase the record that a coach reviewed the day.
+    function ownerCanUpdateDailyActivity(userId) {
+      return isOwner(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "timezone", "hasActivity", "hasWorkout", "hasMeals", "hasWater",
+          "hasMetrics", "hasPhoto", "lastActivityAt", "updatedAt", "schemaVersion"
+        ])
+        && request.resource.data.clientDateKey == resource.data.clientDateKey
+        && request.resource.data.traineeId == userId
+        && request.resource.data.get("hasActivity", false) == (
+          request.resource.data.get("hasWorkout", false)
+          || request.resource.data.get("hasMeals", false)
+          || request.resource.data.get("hasWater", false)
+          || request.resource.data.get("hasMetrics", false)
+          || request.resource.data.get("hasPhoto", false)
+        )
+        && request.resource.data.lastActivityAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function assignedCoachCanReviewDailyActivity(userId) {
+      return isAssignedCoach(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "reviewStatus", "reviewedAt", "reviewedByCoachId"
+        ])
+        && request.resource.data.reviewStatus == "reviewed"
+        && request.resource.data.reviewedAt == request.time
+        && request.resource.data.reviewedByCoachId == request.auth.uid;
+    }
+
+    // Phase D scheduling fields.
+    //
+    // Narrow shape validation only: a scheduledDateKey, when present, must look
+    // like a calendar-shaped YYYY-MM-DD key so a malformed value cannot poison dated
+    // resolution. Absent is always valid — every pre-Phase-D prescription has no
+    // schedule and must keep working.
+    //
+    // This does NOT make prescriptions client-writable. Authoring stays
+    // restricted to the currently assigned coach by the create/update rules
+    // below, and the trainee's allowed mutations remain the two completion
+    // fields, which cannot touch scheduling.
+    function scheduleFieldsAreWellFormed() {
+      return (
+        !("scheduledDateKey" in request.resource.data)
+        || request.resource.data.scheduledDateKey == null
+        || (
+          request.resource.data.scheduledDateKey is string
+          && request.resource.data.scheduledDateKey.matches(
+            "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+          )
+        )
+      ) && (
+        !("status" in request.resource.data)
+        || request.resource.data.status == null
+        || request.resource.data.status in ["draft", "published"]
+      );
+    }
+
+    function programScheduleIsWellFormed() {
+      return (
+        !("startDateKey" in request.resource.data)
+        || request.resource.data.startDateKey == null
+        || (
+          request.resource.data.startDateKey is string
+          && request.resource.data.startDateKey.matches(
+            "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+          )
+        )
+      ) && (
+        !("status" in request.resource.data)
+        || request.resource.data.status == null
+        || request.resource.data.status in ["draft", "published"]
+      );
+    }
+
+    // Trainee may only mark a coach-authored prescription complete —
+    // see workoutService.completePrescribedWorkout.
+    function traineeCanCompletePrescription() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "isCompleted",
+        "completedAt"
+      ]);
+    }
+
+    // Trainee may only mark a prescribed meal applied —
+    // see nutritionService.applyPrescribedMeal.
+    function traineeCanApplyPrescribedMeal() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "isApplied",
+        "appliedAt"
       ]);
     }
 
@@ -61,28 +315,128 @@ service cloud.firestore {
         && (request.auth.uid == resource.data.traineeId || request.auth.uid == resource.data.coachId);
     }
 
-    function isThreadParticipant() {
-      return isSignedIn() && request.auth.uid in resource.data.participants;
+    // Chat is scoped to a coaching relationship, not to a pair of user ids.
+    //
+    // A thread belongs to one assignment. When that assignment ends the thread
+    // is marked "ended", which revokes the COACH's access to the thread and
+    // every message in it. The client keeps their own history — it is their
+    // conversation. A coach who is later re-hired gets a brand new thread and
+    // can never read the previous relationship's messages.
+    //
+    // Legacy threads written before this model have no `status` field. They are
+    // treated as active so nothing breaks mid-migration; the backfill sets the
+    // field explicitly. See scripts/backfillAssignments.cjs.
+    function threadIsActive(threadData) {
+      return threadData.get("status", "active") == "active";
     }
 
-    function isMessageParticipant(threadKey) {
-      return isSignedIn()
-        && exists(/databases/$(database)/documents/chatThreads/$(threadKey))
-        && request.auth.uid in get(/databases/$(database)/documents/chatThreads/$(threadKey)).data.participants;
+    function threadDataFor(threadKey) {
+      return get(/databases/$(database)/documents/chatThreads/$(threadKey)).data;
     }
 
-    function isMessageCreateParticipant(threadKey) {
+    function isThreadTrainee() {
+      return isSignedIn() && request.auth.uid == resource.data.get("traineeId", "");
+    }
+
+    function isActiveThreadCoach() {
+      return isSignedIn()
+        && request.auth.uid in resource.data.get("participants", [])
+        && threadIsActive(resource.data);
+    }
+
+    // Message access is derived from the parent thread, never from fields on
+    // the message itself. A senderId/receiverId shortcut would let a former
+    // coach keep reading a thread they have been removed from.
+    function canReadThreadMessages(threadKey) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/chatThreads/$(threadKey))
-        && request.auth.uid in get(/databases/$(database)/documents/chatThreads/$(threadKey)).data.participants;
+        && (
+          request.auth.uid == threadDataFor(threadKey).traineeId
+          || (
+            request.auth.uid == threadDataFor(threadKey).coachId
+            && threadIsActive(threadDataFor(threadKey))
+          )
+        );
+    }
+
+    // Sending requires an ACTIVE relationship for both parties.
+    function canSendThreadMessage(threadKey) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/chatThreads/$(threadKey))
+        && threadIsActive(threadDataFor(threadKey))
+        && request.auth.uid in threadDataFor(threadKey).participants;
+    }
+
+    function participantCanRecordThreadMessage() {
+      let senderIsCoach = request.auth.uid == resource.data.coachId;
+      let senderIsTrainee = request.auth.uid == resource.data.traineeId;
+      return isSignedIn()
+        && threadIsActive(resource.data)
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "lastMessageText", "lastMessageType", "lastMessageAt",
+          "lastSenderId", "unreadByCoach", "unreadByTrainee", "updatedAt"
+        ])
+        && request.resource.data.lastMessageText is string
+        && request.resource.data.lastMessageText.size() <= 500
+        && request.resource.data.lastMessageType in ["text", "image"]
+        && request.resource.data.lastSenderId == request.auth.uid
+        && request.resource.data.lastMessageAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && (
+          (senderIsTrainee
+            && request.resource.data.unreadByCoach == resource.data.get("unreadByCoach", 0) + 1
+            && request.resource.data.unreadByTrainee == resource.data.get("unreadByTrainee", 0))
+          ||
+          (senderIsCoach
+            && request.resource.data.unreadByTrainee == resource.data.get("unreadByTrainee", 0) + 1
+            && request.resource.data.unreadByCoach == resource.data.get("unreadByCoach", 0))
+        );
+    }
+
+    function participantCanMarkThreadRead() {
+      let readerIsCoach = request.auth.uid == resource.data.coachId;
+      let readerIsTrainee = request.auth.uid == resource.data.traineeId;
+      return isSignedIn()
+        && threadIsActive(resource.data)
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "unreadByCoach", "unreadByTrainee", "updatedAt"
+        ])
+        && request.resource.data.updatedAt == request.time
+        && (
+          (readerIsCoach
+            && request.resource.data.unreadByCoach == 0
+            && request.resource.data.unreadByTrainee == resource.data.get("unreadByTrainee", 0))
+          ||
+          (readerIsTrainee
+            && request.resource.data.unreadByTrainee == 0
+            && request.resource.data.unreadByCoach == resource.data.get("unreadByCoach", 0))
+        );
     }
 
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAssignedCoach(userId) || isPublicCoachProfile();
+      // `get` (single doc) may use isAssignedCoach(), which costs one get() call.
+      // `list` (query) must NOT: isAssignedCoach() issues one document-access call
+      // per returned document, and Firestore caps those at 10 per query request —
+      // so a coach with >10 clients would get permission-denied on the whole
+      // roster query. The list branch instead reads resource.data directly, which
+      // is free and gives the identical guarantee for the roster query in
+      // services/coachService.ts (where selectedCoachId == uid && status assigned).
+      allow get: if isOwner(userId) || isAssignedCoach(userId) || isPublicCoachProfile();
+      allow list: if isPublicCoachProfile()
+        || isOwner(userId)
+        || (isSignedIn()
+            && resource.data.selectedCoachId == request.auth.uid
+            && resource.data.assignmentStatus == "assigned");
       allow create: if isOwner(userId);
       allow update: if (
         (isOwner(userId)
-          && ownerCanUpdateProfile())
+          && (ownerCanUpdateProfile() || ownerCanCaptureTimezone() || ownerCanRefreshActivitySummary()))
+        || ownerCanOpenCoachRequest(userId)
+        || ownerCanCancelCoachRequest(userId)
+        || coachCanResolveUserRequest(userId)
+        || participantCanDetachEndedAssignment(userId)
       );
       allow delete: if false;
 
@@ -92,7 +446,10 @@ service cloud.firestore {
       }
 
       match /photos/{docId} {
-        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        // V0 stores a permanent public CDN URL in this document. Field-level
+        // read filtering is impossible, so coaches use dailyReports.hasPhoto
+        // and cannot read the URL-bearing photo document at all.
+        allow read: if isOwner(userId);
         allow create, update, delete: if isOwner(userId);
       }
 
@@ -111,21 +468,40 @@ service cloud.firestore {
         allow create, update, delete: if isOwner(userId);
       }
 
+      // Daily report metadata. Clients maintain narrow activity-presence flags
+      // alongside their raw logs; the assigned coach maintains review fields.
+      // The owner cannot write review fields, and the coach cannot write
+      // activity fields. This separation keeps review state trustworthy in V0.
+      match /dailyReports/{clientDateKey} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create: if ownerCanCreateDailyActivity(userId, clientDateKey);
+        allow update: if ownerCanUpdateDailyActivity(userId)
+          || assignedCoachCanReviewDailyActivity(userId);
+        allow delete: if false;
+      }
+
       match /prescribedWorkouts/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
-        allow create, update: if isOwner(userId) || isAssignedCoach(userId);
+        // Only the assigned coach may author a prescription. The trainee may
+        // only flip the completion flags — previously the trainee could forge a
+        // prescription with an arbitrary coachId/title/exercises.
+        allow create: if isAssignedCoach(userId) && scheduleFieldsAreWellFormed();
+        allow update: if (isAssignedCoach(userId) && scheduleFieldsAreWellFormed())
+          || (isOwner(userId) && traineeCanCompletePrescription());
         allow delete: if false;
       }
 
       match /prescribed_meals/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
-        allow create, update: if isOwner(userId) || isAssignedCoach(userId);
+        allow create: if isAssignedCoach(userId) && scheduleFieldsAreWellFormed();
+        allow update: if (isAssignedCoach(userId) && scheduleFieldsAreWellFormed())
+          || (isOwner(userId) && traineeCanApplyPrescribedMeal());
         allow delete: if false;
       }
 
       match /programs/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
-        allow create, update: if isAssignedCoach(userId);
+        allow create, update: if isAssignedCoach(userId) && programScheduleIsWellFormed();
         allow delete: if false;
       }
 
@@ -159,7 +535,61 @@ service cloud.firestore {
 
     match /coachRequests/{requestId} {
       allow read: if isCoachRequestParticipant();
-      allow create, update: if false;
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.traineeId
+        && requestId == request.resource.data.traineeId + "_" + request.resource.data.coachId
+        && request.resource.data.status == "pending"
+        && userDoc(request.resource.data.coachId).data.role == "coach"
+        && userDocAfter(request.resource.data.traineeId).data.assignmentStatus == "pending"
+        && userDocAfter(request.resource.data.traineeId).data.selectedCoachId == request.resource.data.coachId
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isSignedIn() && (
+        // A trainee can open/re-open exactly the request represented by their
+        // post-batch user state.
+        (request.auth.uid == request.resource.data.traineeId
+          && requestId == request.resource.data.traineeId + "_" + request.resource.data.coachId
+          && request.resource.data.status == "pending"
+          && userDocAfter(request.resource.data.traineeId).data.assignmentStatus == "pending"
+          && userDocAfter(request.resource.data.traineeId).data.selectedCoachId == request.resource.data.coachId
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time)
+        ||
+        // Cancellation is valid only when the same atomic batch detaches this
+        // request or moves the trainee to a different pending coach.
+        (request.auth.uid == resource.data.traineeId
+          && resource.data.status == "pending"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status", "cancellationReason", "cancelledAt", "updatedAt"
+          ])
+          && request.resource.data.status == "cancelled"
+          && request.resource.data.cancelledAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && (
+            userDocAfter(resource.data.traineeId).data.assignmentStatus == "unassigned"
+            || userDocAfter(resource.data.traineeId).data.selectedCoachId != resource.data.coachId
+          ))
+        ||
+        // Only the requested coach can accept/reject, and the trainee document
+        // must reach the matching state in the same commit.
+        (request.auth.uid == resource.data.coachId
+          && resource.data.status == "pending"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status", "respondedAt", "updatedAt"
+          ])
+          && request.resource.data.status in ["accepted", "rejected"]
+          && request.resource.data.respondedAt == request.time
+          && request.resource.data.updatedAt == request.time
+          && (
+            (request.resource.data.status == "accepted"
+              && userDocAfter(resource.data.traineeId).data.assignmentStatus == "assigned"
+              && userDocAfter(resource.data.traineeId).data.selectedCoachId == resource.data.coachId)
+            ||
+            (request.resource.data.status == "rejected"
+              && userDocAfter(resource.data.traineeId).data.assignmentStatus == "rejected"
+              && userDocAfter(resource.data.traineeId).data.selectedCoachId == null)
+          ))
+      );
       allow delete: if false;
     }
 
@@ -172,34 +602,95 @@ service cloud.firestore {
     match /assignments/{assignmentId} {
       allow read: if isSignedIn()
         && (request.auth.uid == resource.data.traineeId || request.auth.uid == resource.data.coachId);
-      allow create, update, delete: if false;
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.coachId
+        && request.resource.data.status == "active"
+        && request.resource.data.threadId == assignmentId
+        && request.resource.data.sourceRequestId == request.resource.data.traineeId + "_" + request.resource.data.coachId
+        && coachRequestAfter(request.resource.data.traineeId, request.resource.data.coachId).data.status == "accepted"
+        && userDocAfter(request.resource.data.traineeId).data.activeAssignmentId == assignmentId
+        && threadAfter(assignmentId).data.assignmentId == assignmentId
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isSignedIn()
+        && resource.data.status == "active"
+        && request.auth.uid in [resource.data.traineeId, resource.data.coachId]
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status", "endedAt", "endedBy", "endReason", "endNote", "updatedAt"
+        ])
+        && request.resource.data.status == "ended"
+        && request.resource.data.endedBy == request.auth.uid
+        && request.resource.data.endedAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && userDocAfter(resource.data.traineeId).data.activeAssignmentId == null
+        && threadAfter(resource.data.threadId).data.status == "ended";
+      allow delete: if false;
     }
 
     match /chatThreads/{threadId} {
-      allow read: if isThreadParticipant();
-      allow create, update, delete: if false;
+      // The client always reaches their own conversations. The coach reaches a
+      // thread only while the assignment behind it is active.
+      //
+      // NOTE for the coach inbox query: this evaluates per returned document,
+      // so a query that can return an ended thread fails ENTIRELY. The coach
+      // query in services/chatService.ts filters status == "active" for exactly
+      // that reason, which in turn requires every thread document to carry the
+      // field — Firestore excludes documents missing a filtered field. Run
+      // scripts/backfillAssignments.cjs BEFORE deploying these rules.
+      allow read: if isThreadTrainee() || isActiveThreadCoach();
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.coachId
+        && request.resource.data.assignmentId == threadId
+        && request.resource.data.threadId == threadId
+        && request.resource.data.status == "active"
+        && request.resource.data.participants == [request.resource.data.traineeId, request.resource.data.coachId]
+        && assignmentAfter(threadId).data.status == "active"
+        && assignmentAfter(threadId).data.traineeId == request.resource.data.traineeId
+        && assignmentAfter(threadId).data.coachId == request.resource.data.coachId
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if participantCanRecordThreadMessage()
+        || participantCanMarkThreadRead()
+        || (isSignedIn()
+          && resource.data.status == "active"
+          && request.auth.uid in resource.data.participants
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status", "endedAt", "updatedAt"
+          ])
+          && request.resource.data.status == "ended"
+          && assignmentAfter(resource.data.assignmentId).data.status == "ended"
+          && request.resource.data.endedAt == request.time
+          && request.resource.data.updatedAt == request.time);
+      allow delete: if false;
     }
 
     match /chats/{threadId}/messages/{messageId} {
-      allow read: if isMessageParticipant(threadId)
-        || (
-          isSignedIn()
-          && (
-            request.auth.uid == resource.data.senderId
-            || request.auth.uid == resource.data.receiverId
-            || (resource.data.participants is list && request.auth.uid in resource.data.participants)
-          )
-        );
-      allow create: if isMessageCreateParticipant(threadId)
+      // Derived solely from the parent thread. The previous rule also allowed
+      // access to anyone listed as senderId/receiverId on the message itself,
+      // which meant ending an assignment did not actually revoke a former
+      // coach's ability to read the conversation.
+      allow read: if canReadThreadMessages(threadId);
+      allow create: if canSendThreadMessage(threadId)
         && request.auth.uid == request.resource.data.senderId
         && request.resource.data.receiverId is string
-        && request.resource.data.receiverId in get(/databases/$(database)/documents/chatThreads/$(threadId)).data.participants
+        && request.resource.data.receiverId in threadDataFor(threadId).participants
         && request.resource.data.threadId == threadId
-        && request.resource.data.type in ["text", "image"];
+        && request.resource.data.type in ["text", "image"]
+        && request.resource.data.createdAt == request.time
+        && threadAfter(threadId).data.lastSenderId == request.auth.uid
+        && threadAfter(threadId).data.lastMessageAt == request.time;
       allow update, delete: if false;
     }
 
     match /exercises/{exerciseId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Curated food database queried by services/nutritionSearchService.ts.
+    // Without this rule every food search hit permission-denied and silently
+    // fell back to Open Food Facts only. Seeded server-side; never client-writable.
+    match /foods/{foodId} {
       allow read: if isSignedIn();
       allow write: if false;
     }

@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ToastService } from "../../components/Toast";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View, type ListRenderItem } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
-import { auth } from "../../config/firebase";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import {
     subscribeToCoachThreadSummaries,
     subscribeToCoachTrainees,
@@ -14,6 +15,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
+import { subscribeWithCache } from "../../data/subscriptions/subscriptionCache";
 
 const toTime = (value: unknown): number => {
     if (!value) return 0;
@@ -36,45 +38,61 @@ const toTimeLabel = (value: unknown): string => {
     return time > 0 ? new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
 };
 
+const keyExtractor = (trainee: CoachTrainee) => trainee.id;
+
 export function CoachInboxScreen() {
     const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
     const [summaries, setSummaries] = useState<Record<string, ChatThreadSummary | null>>({});
     const [isLoading, setIsLoading] = useState(true);
+    const [threadsReady, setThreadsReady] = useState(false);
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    // Firebase Auth rehydrates from AsyncStorage asynchronously, so reading
+    // auth.currentUser at first mount returns null on a cold start and the
+    // subscriptions below would never be created (permanent spinner).
+    // useCurrentUser re-renders once auth resolves, and keying the effects on
+    // uid also tears listeners down correctly on logout / account switch.
+    const uid = useCurrentUser();
 
     useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
+        if (!uid) {
+            setTrainees([]);
+            setSummaries({});
+            setIsLoading(false);
+            return;
+        }
 
-        const unsubscribe = subscribeToCoachTrainees(user.uid, (data) => {
+        setIsLoading(true);
+
+        const unsubscribe = subscribeToCoachTrainees(uid, (data) => {
             setTrainees(data.filter((t) => t.assignmentStatus === "assigned"));
             setIsLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [uid]);
 
     useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
+        if (!uid) return;
 
-        return subscribeToCoachThreadSummaries(user.uid, (threadSummaries: CoachThreadSummary[]) => {
-            const next: Record<string, ChatThreadSummary> = {};
-            threadSummaries.forEach((summary) => {
-                next[summary.traineeId] = summary;
-            });
-            setSummaries(next);
-        });
-    }, []);
+        setThreadsReady(false);
+        return subscribeWithCache<CoachThreadSummary[]>(
+            `coachThreads:${uid}`,
+            (emit, onError) => subscribeToCoachThreadSummaries(uid, emit, onError),
+            (threadSummaries) => {
+                const next: Record<string, ChatThreadSummary> = {};
+                threadSummaries.forEach((summary) => {
+                    next[summary.traineeId] = summary;
+                });
+                setSummaries(next);
+                setThreadsReady(true);
+            }
+        );
+    }, [uid]);
 
     const rows = useMemo(() => {
         const sorted = [...trainees].sort((a, b) => {
-            const aSummary = a.clientSummary?.lastMessageAt ? {
-                lastMessageAt: a.clientSummary.lastMessageAt,
-            } : summaries[a.id];
-            const bSummary = b.clientSummary?.lastMessageAt ? {
-                lastMessageAt: b.clientSummary.lastMessageAt,
-            } : summaries[b.id];
+            const aSummary = summaries[a.id];
+            const bSummary = summaries[b.id];
             const aTime = toTime(aSummary?.lastMessageAt);
             const bTime = toTime(bSummary?.lastMessageAt);
             if (aTime !== bTime) return bTime - aTime;
@@ -82,6 +100,37 @@ export function CoachInboxScreen() {
         });
         return sorted;
     }, [summaries, trainees]);
+
+    const openThread = useCallback((trainee: CoachTrainee) => {
+        const threadId = summaries[trainee.id]?.threadId;
+        if (!threadsReady || !threadId) {
+            ToastService.error("Conversation unavailable", "The active conversation is still loading. Please try again.");
+            return;
+        }
+        navigation.navigate("CoachChat", {
+            traineeId: trainee.id,
+            traineeName: trainee.name || "Anonymous",
+            coachId: uid || "unknown",
+            // The thread summary already carries the assignment-scoped id, so
+            // pass it through rather than letting the chat screen re-derive one.
+            threadId,
+        });
+    }, [navigation, uid, summaries, threadsReady]);
+
+    const renderThreadRow = useCallback<ListRenderItem<CoachTrainee>>(({ item }) => {
+        const summary = summaries[item.id];
+        const threadSummary = summaries[item.id] as CoachThreadSummary | undefined;
+
+        return (
+            <ThreadRow
+                trainee={item}
+                preview={summary?.lastMessageText || "No messages yet"}
+                timeLabel={toTimeLabel(summary?.lastMessageAt)}
+                unreadCount={threadSummary?.unreadByCoach ?? 0}
+                onPress={openThread}
+            />
+        );
+    }, [summaries, openThread]);
 
     return (
         <ScreenShell
@@ -94,62 +143,67 @@ export function CoachInboxScreen() {
                     <ActivityIndicator color={colors.primary} />
                 </View>
             ) : (
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
-                    {rows.length === 0 ? (
+                <FlatList
+                    data={rows}
+                    keyExtractor={keyExtractor}
+                    renderItem={renderThreadRow}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.list}
+                    initialNumToRender={12}
+                    maxToRenderPerBatch={12}
+                    windowSize={7}
+                    removeClippedSubviews
+                    ListEmptyComponent={
                         <View style={styles.emptyBox}>
-                            <Ionicons name="chatbubbles-outline" size={32} color="#444" />
+                            <Ionicons name="chatbubbles-outline" size={32} color={colors.iconFaint} />
                             <Text style={styles.emptyText}>No conversations yet.</Text>
                         </View>
-                    ) : (
-                        rows.map((trainee) => {
-                            const summary = trainee.clientSummary?.lastMessageAt ? {
-                                lastMessageAt: trainee.clientSummary.lastMessageAt,
-                                lastMessageText: trainee.clientSummary.lastMessageText,
-                            } : summaries[trainee.id];
-                            const preview = summary?.lastMessageText || "No messages yet";
-                            const timeLabel = toTimeLabel(summary?.lastMessageAt);
-                            const threadSummary = summaries[trainee.id] as CoachThreadSummary | undefined;
-                            const unreadCount = threadSummary?.unreadByCoach ?? trainee.clientSummary?.unreadCoachCount ?? 0;
-
-                            return (
-                                <Pressable
-                                    key={trainee.id}
-                                    style={styles.threadCard}
-                                    onPress={() =>
-                                        navigation.navigate("CoachChat", {
-                                            traineeId: trainee.id,
-                                            traineeName: trainee.name || "Anonymous",
-                                            coachId: auth.currentUser?.uid || "unknown",
-                                        })
-                                    }
-                                >
-                                    <View style={styles.avatar}>
-                                        <Text style={styles.avatarText}>{(trainee.name || "?")[0]}</Text>
-                                    </View>
-                                    <View style={styles.threadBody}>
-                                        <View style={styles.threadHeader}>
-                                            <Text style={styles.threadName}>{trainee.name || "Anonymous"}</Text>
-                                            <Text style={styles.threadTime}>{timeLabel}</Text>
-                                        </View>
-                                        <Text style={styles.threadPreview} numberOfLines={1}>
-                                            {preview}
-                                        </Text>
-                                    </View>
-                                    {unreadCount > 0 && (
-                                        <View style={styles.unreadBadge}>
-                                            <Text style={styles.unreadText}>{unreadCount}</Text>
-                                        </View>
-                                    )}
-                                    <Ionicons name="chevron-forward" size={18} color="#444" />
-                                </Pressable>
-                            );
-                        })
-                    )}
-                </ScrollView>
+                    }
+                />
             )}
         </ScreenShell>
     );
 }
+
+type ThreadRowProps = {
+    trainee: CoachTrainee;
+    preview: string;
+    timeLabel: string;
+    unreadCount: number;
+    onPress: (trainee: CoachTrainee) => void;
+};
+
+/** Memoized so one thread update doesn't re-render the whole inbox. */
+const ThreadRow = memo(function ThreadRow({ trainee, preview, timeLabel, unreadCount, onPress }: ThreadRowProps) {
+    const name = trainee.name || "Anonymous";
+    return (
+        <Pressable
+            style={styles.threadCard}
+            accessibilityRole="button"
+            accessibilityLabel={`Conversation with ${name}${unreadCount ? `, ${unreadCount} unread` : ""}`}
+            onPress={() => onPress(trainee)}
+        >
+            <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{(trainee.name || "?")[0]}</Text>
+            </View>
+            <View style={styles.threadBody}>
+                <View style={styles.threadHeader}>
+                    <Text style={styles.threadName}>{name}</Text>
+                    <Text style={styles.threadTime}>{timeLabel}</Text>
+                </View>
+                <Text style={styles.threadPreview} numberOfLines={1}>
+                    {preview}
+                </Text>
+            </View>
+            {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadText}>{unreadCount}</Text>
+                </View>
+            )}
+            <Ionicons name="chevron-forward" size={18} color={colors.iconFaint} />
+        </Pressable>
+    );
+});
 
 const styles = StyleSheet.create({
     shellContent: { paddingBottom: 0 },
@@ -168,7 +222,7 @@ const styles = StyleSheet.create({
         marginBottom: 6,
     },
     signalText: {
-        color: "#666",
+        color: colors.textMuted,
         fontSize: 12,
         fontWeight: "600",
     },
@@ -213,12 +267,12 @@ const styles = StyleSheet.create({
         fontWeight: "800",
     },
     threadTime: {
-        color: "#666",
+        color: colors.textMuted,
         fontSize: 11,
         fontWeight: "600",
     },
     threadPreview: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 13,
         fontWeight: "600",
     },
@@ -242,7 +296,7 @@ const styles = StyleSheet.create({
         gap: 12,
     },
     emptyText: {
-        color: "#444",
+        color: colors.textDim,
         fontSize: 14,
         fontWeight: "600",
     },

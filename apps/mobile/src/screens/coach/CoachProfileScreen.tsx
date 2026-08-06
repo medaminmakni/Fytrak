@@ -1,361 +1,240 @@
-import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View, Pressable, ActivityIndicator } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Animated, StyleSheet, View } from "react-native";
 import { useNavigation } from "@react-navigation/native";
+import * as ImagePicker from "expo-image-picker";
 import { ScreenShell } from "../../components/ScreenShell";
-import { colors } from "../../theme/colors";
-import { Ionicons } from "@expo/vector-icons";
-import { auth } from "../../config/firebase";
-import { subscribeToUserProfile, saveUserRole, subscribeToCoachTrainees, subscribeToCoachTemplates } from "../../services/userSession";
-import { logOut } from "../../services/auth";
-import { SessionState } from "../../state/types";
 import { ToastService } from "../../components/Toast";
+import { colors } from "../../theme/colors";
+import { spacing } from "../../theme/tokens";
+import { auth } from "../../config/firebase";
+import { logOut } from "../../services/auth";
+import { 
+  subscribeToUserProfile, 
+  subscribeToCoachTrainees, 
+  subscribeToCoachTemplates, 
+  saveUserProfile, 
+  uploadProfileImage 
+} from "../../services/userSession";
+import type { SessionState } from "../../state/types";
+import {
+  ProfileAccountPanel,
+  ProfileBioSection,
+  CoachProfileHero,
+  CoachExpertiseSection,
+} from "../../features/profile/components/ProfileSections";
 
 export function CoachProfileScreen({ session }: { session: SessionState }) {
-    const navigation = useNavigation<any>();
-    const [profile, setProfile] = useState<any>(null);
-    const [traineeCount, setTraineeCount] = useState(0);
-    const [templateCount, setTemplateCount] = useState(0);
-    const [isLoading, setIsLoading] = useState(true);
+  const navigation = useNavigation<any>();
+  const [profile, setProfile] = useState<any>(null);
+  const [traineeCount, setTraineeCount] = useState(0);
+  const [templateCount, setTemplateCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [tempName, setTempName] = useState("");
+  const [tempBio, setTempBio] = useState("");
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
 
-        const unsubProfile = subscribeToUserProfile(user.uid, (data) => {
-            setProfile(data);
-            setIsLoading(false);
-        });
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
 
-        const unsubTrainees = subscribeToCoachTrainees(user.uid, (data) => {
-            setTraineeCount(data.length);
-        });
+    const unsubProfile = subscribeToUserProfile(user.uid, (data) => {
+      setProfile(data);
+      setIsLoading(false);
+    });
 
-        // Use any template type just to get a total or default to workout
-        const unsubTemplates = subscribeToCoachTemplates(user.uid, null, (data) => {
-            setTemplateCount(data.length);
-        });
+    const unsubTrainees = subscribeToCoachTrainees(user.uid, (data) => {
+      setTraineeCount(data.length);
+    });
 
-        return () => {
-            unsubProfile();
-            unsubTrainees();
-            unsubTemplates();
-        };
-    }, []);
+    const unsubTemplates = subscribeToCoachTemplates(user.uid, null, (data) => {
+      setTemplateCount(data.length);
+    });
 
-    const handleLogout = () => {
-        ToastService.confirm({
-            title: "Sign out",
-            message: "Are you sure you want to leave Fytrak?",
-            confirmLabel: "Sign out",
-            destructive: true,
-            onConfirm: async () => {
-                try {
-                    await logOut();
-                    ToastService.info("Signed out", "Your Fytrak session has been closed.");
-                } catch (error) {
-                    ToastService.error("Sign out failed", error instanceof Error ? error.message : "Please try again.");
-                }
-            },
-        });
+    return () => {
+      unsubProfile();
+      unsubTrainees();
+      unsubTemplates();
     };
+  }, []);
 
-    const handleSwitchRole = () => {
-        ToastService.confirm({
-            title: "Switch Mode",
-            message: "Switch to Trainee mode to log your own personal workouts?",
-            confirmLabel: "Switch",
-            onConfirm: () => auth.currentUser && saveUserRole(auth.currentUser.uid, "trainee"),
-        });
-    };
+  useEffect(() => {
+    setTempName(profile?.name || auth.currentUser?.displayName || "");
+  }, [profile?.name]);
 
-    if (isLoading) return (
-        <ScreenShell title="Profile" centered>
-            <ActivityIndicator color={colors.primary} />
-        </ScreenShell>
-    );
+  useEffect(() => {
+    setTempBio(profile?.coachProfile?.bio || "");
+  }, [profile?.coachProfile?.bio]);
 
-    const cp = profile?.coachProfile;
+  useEffect(() => {
+    if (!isLoading) {
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 320,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [fadeAnim, isLoading]);
 
-    return (
-        <ScreenShell
-            title="Profile"
-            subtitle="Professional identity & settings"
-            contentStyle={styles.shellContent}
-            rightActionIcon="settings-outline"
-            onRightAction={() => ToastService.info("Settings", "App settings coming soon (Theme, Notifications, Privacy).")}
+  const handleLogout = () => {
+    ToastService.confirm({
+      title: "Sign out",
+      message: "Are you sure you want to leave Fytrak?",
+      confirmLabel: "Sign out",
+      destructive: true,
+      onConfirm: async () => {
+        try {
+          await logOut();
+          ToastService.info("Signed out", "Your Fytrak session has been closed.");
+        } catch (error) {
+          ToastService.error("Sign out failed", error instanceof Error ? error.message : "Please try again.");
+        }
+      },
+    });
+  };
+
+  const handleUpdateName = async () => {
+    const cleanName = tempName.trim();
+    if (!auth.currentUser || !cleanName) {
+      setIsEditingName(false);
+      return;
+    }
+
+    try {
+      await saveUserProfile(auth.currentUser.uid, { name: cleanName });
+      setIsEditingName(false);
+      ToastService.success("Profile updated", "Your identity is up to date.");
+    } catch (error) {
+      ToastService.error("Update failed", "Could not update your name.");
+    }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        ToastService.error("Permission needed", "Photo access is required to update your profile image.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.65,
+      });
+
+      if (!result.canceled && auth.currentUser) {
+        setIsUploadingImage(true);
+        await uploadProfileImage(auth.currentUser.uid, result.assets[0].uri);
+        ToastService.success("Photo updated", "Your profile now feels more personal.");
+      }
+    } catch (error) {
+      ToastService.error("Upload failed", "Could not update your profile photo.");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleUpdateBio = async () => {
+    if (!auth.currentUser) {
+      setIsEditingBio(false);
+      return;
+    }
+
+    try {
+      // Need to merge with existing coachProfile
+      const updatedCoachProfile = {
+        ...profile?.coachProfile,
+        bio: tempBio.trim()
+      };
+      await saveUserProfile(auth.currentUser.uid, { coachProfile: updatedCoachProfile });
+      setIsEditingBio(false);
+      ToastService.success("Bio updated", "Your professional bio is now sharper.");
+    } catch (error) {
+      ToastService.error("Update failed", "Could not update your bio.");
+    }
+  };
+
+  return (
+    <ScreenShell
+      title="Profile"
+      subtitle="Professional identity and settings"
+      contentStyle={styles.shellContent}
+      rightActionIcon="settings-outline"
+      onRightAction={() => ToastService.info("Settings", "App settings coming soon.")}
+    >
+      {isLoading ? (
+        <View style={styles.loader}>
+          <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      ) : (
+        <Animated.ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          style={{ opacity: fadeAnim }}
         >
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-                {/* HEADER */}
-                <View style={styles.header}>
-                    <View style={styles.avatarWrap}>
-                        <View style={styles.avatar}>
-                            <Text style={styles.avatarText}>{profile?.name?.[0] || "?"}</Text>
-                        </View>
-                        <View style={styles.verifiedBadge}>
-                            <Ionicons name="checkmark-circle" size={26} color={colors.primary} />
-                        </View>
-                    </View>
-                    <Text style={styles.name}>{profile?.name}</Text>
-                    <View style={styles.badgeRow}>
-                        <View style={styles.proBadge}><Text style={styles.proBadgeText}>VERIFIED COACH</Text></View>
-                    </View>
-                </View>
+          <CoachProfileHero
+            profile={profile}
+            name={tempName}
+            traineeCount={traineeCount}
+            templateCount={templateCount}
+            experience={profile?.coachProfile?.experience ?? 0}
+            isEditingName={isEditingName}
+            onNameChange={setTempName}
+            onSaveName={() => void handleUpdateName()}
+            onEditName={() => setIsEditingName(true)}
+            onPickImage={() => void handlePickImage()}
+          />
 
-                {/* STATS */}
-                <View style={styles.statsGrid}>
-                    <View style={styles.statBox}>
-                        <Text style={styles.statVal}>{traineeCount}</Text>
-                        <Text style={styles.statLabel}>Clients</Text>
-                    </View>
-                    <View style={styles.statBox}>
-                        <Text style={styles.statVal}>{templateCount}</Text>
-                        <Text style={styles.statLabel}>Templates</Text>
-                    </View>
-                    <View style={styles.statBox}>
-                        <Text style={styles.statVal}>{cp?.experience ?? 0}</Text>
-                        <Text style={styles.statLabel}>Years Exp</Text>
-                    </View>
-                </View>
+          {isUploadingImage ? (
+            <View style={styles.uploading}>
+              <ActivityIndicator color={colors.primary} />
+            </View>
+          ) : null}
 
-                {/* BIO SECTION */}
-                <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>Professional Bio</Text>
-                        <Pressable
-                            style={styles.editBtn}
-                            onPress={() => navigation.navigate("EditCoachProfile")}
-                        >
-                            <Ionicons name="create-outline" size={18} color={colors.primary} />
-                            <Text style={styles.editBtnText}>EDIT</Text>
-                        </Pressable>
-                    </View>
-                    <View style={styles.card}>
-                        <Text style={styles.bioText}>
-                            {cp?.bio || "No professional bio added yet. Hit edit to tell trainees about yourself!"}
-                        </Text>
-                    </View>
-                </View>
+          <ProfileBioSection
+            bio={profile?.coachProfile?.bio}
+            isEditing={isEditingBio}
+            value={tempBio}
+            onChange={setTempBio}
+            onEdit={() => setIsEditingBio(true)}
+            onSave={() => void handleUpdateBio()}
+          />
 
-                {/* SPECIALTIES */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Expertise</Text>
-                    <View style={styles.tagGrid}>
-                        {(!cp?.specialties || cp.specialties.length === 0) ? (
-                            <Text style={styles.emptyText}>No specialties listed.</Text>
-                        ) : cp.specialties.map((s: string) => (
-                            <View key={s} style={styles.tag}>
-                                <Text style={styles.tagText}>{s}</Text>
-                            </View>
-                        ))}
-                    </View>
-                </View>
+          <CoachExpertiseSection 
+            specialties={profile?.coachProfile?.specialties} 
+          />
 
-                {/* ACTIONS */}
-                <View style={styles.actions}>
-                    <Pressable style={styles.actionRow} onPress={handleSwitchRole}>
-                        <View style={styles.actionIconBox}>
-                            <Ionicons name="swap-horizontal" size={20} color={colors.primary} />
-                        </View>
-                        <Text style={styles.actionLabel}>Switch to Trainee Mode</Text>
-                        <Ionicons name="chevron-forward" size={18} color="#444" />
-                    </Pressable>
-
-                    <View style={styles.divider} />
-
-                    <Pressable style={styles.actionRow} onPress={handleLogout}>
-                        <View style={[styles.actionIconBox, { backgroundColor: "#2a1a1a" }]}>
-                            <Ionicons name="log-out-outline" size={20} color="#ff4444" />
-                        </View>
-                        <Text style={[styles.actionLabel, { color: "#ff4444" }]}>Sign Out</Text>
-                        <Ionicons name="chevron-forward" size={18} color="#444" />
-                    </Pressable>
-                </View>
-            </ScrollView>
-        </ScreenShell>
-    );
+          <ProfileAccountPanel
+            profile={profile}
+            onLogout={handleLogout}
+          />
+        </Animated.ScrollView>
+      )}
+    </ScreenShell>
+  );
 }
 
 const styles = StyleSheet.create({
-    shellContent: { paddingBottom: 0 },
-    scroll: { paddingBottom: 120, gap: 24 },
-    header: {
-        alignItems: "center",
-        marginTop: 10,
-    },
-    avatarWrap: {
-        position: "relative",
-        marginBottom: 16,
-    },
-    avatar: {
-        width: 100,
-        height: 100,
-        borderRadius: 50,
-        backgroundColor: "#161616",
-        alignItems: "center",
-        justifyContent: "center",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    avatarText: {
-        color: "#ffffff",
-        fontSize: 32,
-        fontWeight: "900",
-    },
-    verifiedBadge: {
-        position: "absolute",
-        bottom: 0,
-        right: 0,
-        backgroundColor: "#000",
-        borderRadius: 12,
-    },
-    name: {
-        color: "#ffffff",
-        fontSize: 24,
-        fontWeight: "900",
-        marginBottom: 8,
-    },
-    badgeRow: {
-        flexDirection: "row",
-        gap: 8,
-    },
-    proBadge: {
-        backgroundColor: "#1a1a10",
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: `${colors.primary}40`,
-    },
-    proBadgeText: {
-        color: colors.primary,
-        fontSize: 10,
-        fontWeight: "900",
-        letterSpacing: 1,
-    },
-    statsGrid: {
-        flexDirection: "row",
-        gap: 12,
-    },
-    statBox: {
-        flex: 1,
-        backgroundColor: "#161616",
-        borderRadius: 20,
-        padding: 16,
-        alignItems: "center",
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    statVal: {
-        color: "#ffffff",
-        fontSize: 20,
-        fontWeight: "900",
-    },
-    statLabel: {
-        color: "#666",
-        fontSize: 11,
-        fontWeight: "700",
-        textTransform: "uppercase",
-        marginTop: 2,
-    },
-    section: {
-        gap: 12,
-    },
-    sectionHeader: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        paddingRight: 4,
-    },
-    editBtn: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
-        backgroundColor: "#1c1c1e",
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: "#333",
-    },
-    editBtnText: {
-        color: colors.primary,
-        fontSize: 11,
-        fontWeight: "900",
-    },
-    sectionTitle: {
-        color: "#ffffff",
-        fontSize: 18,
-        fontWeight: "800",
-        paddingLeft: 4,
-    },
-    emptyText: {
-        color: "#444",
-        fontSize: 13,
-        fontWeight: "500",
-        fontStyle: "italic",
-    },
-    card: {
-        backgroundColor: "#161616",
-        borderRadius: 24,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    bioText: {
-        color: "#8c8c8c",
-        fontSize: 14,
-        lineHeight: 22,
-        fontWeight: "500",
-    },
-    tagGrid: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 8,
-        paddingLeft: 4,
-    },
-    tag: {
-        backgroundColor: "#161616",
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    tagText: {
-        color: colors.primary,
-        fontSize: 13,
-        fontWeight: "700",
-    },
-    actions: {
-        backgroundColor: "#161616",
-        borderRadius: 24,
-        padding: 8,
-        borderWidth: 1,
-        borderColor: "#2c2c2e",
-    },
-    actionRow: {
-        flexDirection: "row",
-        alignItems: "center",
-        padding: 12,
-        gap: 16,
-    },
-    actionIconBox: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
-        backgroundColor: "#1c1c1e",
-        alignItems: "center",
-        justifyContent: "center",
-    },
-    actionLabel: {
-        flex: 1,
-        color: "#ffffff",
-        fontSize: 16,
-        fontWeight: "700",
-    },
-    divider: {
-        height: 1,
-        backgroundColor: "#2c2c2e",
-        marginHorizontal: 16,
-    }
+  shellContent: {
+    paddingBottom: 0,
+    marginTop: spacing.md,
+  },
+  loader: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scrollContent: {
+    gap: spacing.md,
+    paddingBottom: spacing["4xl"],
+  },
+  uploading: {
+    marginTop: -spacing.sm,
+    alignItems: "center",
+  },
 });

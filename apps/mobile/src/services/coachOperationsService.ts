@@ -38,12 +38,19 @@ export const subscribeToCoachNotes = (
     limit(10)
   );
 
-  return onSnapshot(q, (snapshot) => {
-    callback(snapshot.docs.map((noteDoc) => ({
-      id: noteDoc.id,
-      ...noteDoc.data(),
-    } as CoachNote)));
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      callback(snapshot.docs.map((noteDoc) => ({
+        id: noteDoc.id,
+        ...noteDoc.data(),
+      } as CoachNote)));
+    },
+    (error) => {
+      console.error("[CoachOperationsService] Coach notes subscription failed:", error);
+      callback([]);
+    }
+  );
 };
 
 export const saveCoachNote = async ({ traineeId, text }: SaveCoachNoteInput): Promise<void> => {
@@ -72,12 +79,19 @@ export const subscribeToOpenCheckInTasks = (
     limit(20)
   );
 
-  return onSnapshot(q, (snapshot) => {
-    callback(snapshot.docs.map((taskDoc) => ({
-      id: taskDoc.id,
-      ...taskDoc.data(),
-    } as CheckInTask)));
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      callback(snapshot.docs.map((taskDoc) => ({
+        id: taskDoc.id,
+        ...taskDoc.data(),
+      } as CheckInTask)));
+    },
+    (error) => {
+      console.error("[CoachOperationsService] Check-in tasks subscription failed:", error);
+      callback([]);
+    }
+  );
 };
 
 export const createCheckInTask = async ({

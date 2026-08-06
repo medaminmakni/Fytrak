@@ -1,5 +1,5 @@
+import { ToastService } from "../components/Toast";
 import { useState, useEffect } from "react";
-import { Alert } from "react-native";
 import { auth } from "../config/firebase";
 import {
     savePrescribedWorkout,
@@ -9,6 +9,7 @@ import {
 } from "../services/userSession";
 import { ExerciseLibraryItem, t as tEx } from "../constants/exercises";
 import { useExerciseSearch } from "./useExerciseSearch";
+import { parseScheduleDateInput } from "../features/plans/scheduleInput";
 
 export type PrescribedExerciseInput = {
     name: string;
@@ -20,6 +21,8 @@ export type PrescribedExerciseInput = {
 
 export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any) {
     const [title, setTitle] = useState("");
+    // Blank = unscheduled, which is the pre-Phase-D behaviour and stays valid.
+    const [scheduledDate, setScheduledDate] = useState("");
     const [exercises, setExercises] = useState<PrescribedExerciseInput[]>([
         { name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }
     ]);
@@ -119,11 +122,20 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
 
     const handleSave = async () => {
         if (!title.trim()) {
-            Alert.alert("Missing Title", "Please give this workout a name (e.g., Upper Body A)");
+            ToastService.error("Missing Title", "Please give this workout a name (e.g., Upper Body A)");
             return;
         }
         if (exercises.some(e => !e.name.trim())) {
-            Alert.alert("Missing Exercise", "Please fill in all exercise names.");
+            ToastService.error("Missing Exercise", "Please fill in all exercise names.");
+            return;
+        }
+
+        // A blank date is valid and means unscheduled — the pre-Phase-D
+        // behaviour. Only a malformed date is rejected, and it is rejected
+        // BEFORE any write so a bad value never reaches Firestore.
+        const schedule = parseScheduleDateInput(scheduledDate);
+        if (!schedule.ok) {
+            ToastService.error("Check the date", schedule.message);
             return;
         }
 
@@ -138,7 +150,7 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
                 title: title.trim(),
                 exercises: exercises,
                 isCompleted: false
-            });
+            }, schedule.scheduledDateKey);
 
             if (saveAsTemplate) {
                 const { saveCoachTemplate } = require("../services/userSession");
@@ -149,12 +161,13 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
                 });
             }
 
-            Alert.alert("Success", "Workout prescribed successfully!", [
-                { text: "OK", onPress: () => navigation.goBack() }
-            ]);
+            ToastService.success("Workout assigned", schedule.scheduledDateKey
+                    ? `Scheduled for ${schedule.scheduledDateKey}. It will appear on your client's plan for that day.`
+                    : "Unscheduled — your client will see this as their next coach workout.");
+            navigation.goBack();
         } catch (error) {
             console.error(error);
-            Alert.alert("Error", "Failed to assign workout.");
+            ToastService.error("Error", "Failed to assign workout.");
         } finally {
             setIsSubmitting(false);
         }
@@ -163,6 +176,8 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
     return {
         title,
         setTitle,
+        scheduledDate,
+        setScheduledDate,
         exercises,
         templates,
         libModalVisible,

@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     emptyText: {
-        color: "#444",
+        color: colors.textDim,
         fontSize: 14,
         fontWeight: "600",
     },
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 4,
     },
     chartLabelText: {
-        color: "#666",
+        color: colors.textMuted,
         fontSize: 11,
         fontWeight: "800",
     },
@@ -204,8 +204,8 @@ const styles = StyleSheet.create({
         borderRadius: 7,
     },
     barLabel: {
-        color: "#666",
-        fontSize: 10,
+        color: colors.textMuted,
+        fontSize: 11,
         fontWeight: "700",
     },
     chartLegend: {
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
         borderRadius: 4,
     },
     legendLabel: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 11,
         fontWeight: "600",
     },
@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
         marginTop: 4,
     },
     statLabel: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 11,
         fontWeight: "700",
         textTransform: "uppercase",

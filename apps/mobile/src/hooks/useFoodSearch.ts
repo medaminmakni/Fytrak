@@ -19,19 +19,29 @@ export function useFoodSearch(options: UseFoodSearchOptions = {}) {
       return;
     }
 
+    // `isActive` prevents a slow in-flight search from resolving after the
+    // component unmounted (setState-after-unmount warning) or, worse, after a
+    // newer query already returned — which would overwrite fresh results with
+    // stale ones.
+    let isActive = true;
+
     const handler = setTimeout(async () => {
       setIsSearching(true);
       try {
         const found = await searchFood(trimmed);
-        setResults(found);
+        if (isActive) setResults(found);
       } catch (e) {
         console.error("Food search failed:", e);
+        if (isActive) setResults([]);
       } finally {
-        setIsSearching(false);
+        if (isActive) setIsSearching(false);
       }
     }, debounceMs);
 
-    return () => clearTimeout(handler);
+    return () => {
+      isActive = false;
+      clearTimeout(handler);
+    };
   }, [query, debounceMs]);
 
   return {

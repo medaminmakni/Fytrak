@@ -1,5 +1,18 @@
+/**
+ * Fytrak spacing, radius, type and sizing scales.
+ *
+ * Every number a screen needs comes from here. If a layout wants a value that
+ * is not on one of these scales, the layout is wrong — not the scale.
+ */
+
+/**
+ * The spacing scale: 4 · 8 · 12 · 16 · 20 · 24 · 32 · 40.
+ *
+ * Space is the divider in this system. A gap does the job an outline used to,
+ * which is why the steps get coarse quickly — 24 and 32 are meant to be
+ * reachable, not exceptional.
+ */
 export const spacing = {
-  xxs: 2,
   xs: 4,
   sm: 8,
   md: 12,
@@ -8,74 +21,137 @@ export const spacing = {
   "2xl": 24,
   "3xl": 32,
   "4xl": 40,
+  /** @deprecated Not on the scale. Use `xs`. */
+  xxs: 4,
 };
 
+/** Fixed layout measurements that are not free choices. */
+export const layout = {
+  /** Horizontal padding on every screen. Identical everywhere, no exceptions. */
+  screenGutter: 20,
+  /** Vertical gap between two sections of a screen. */
+  sectionGap: 32,
+};
+
+/**
+ * Three radii, matched to the three surfaces.
+ *
+ * `card` for anything sitting directly on the page, `nested` for a region
+ * inside a card, `pill` for chips and round controls. Prefer these names over
+ * the t-shirt sizes below.
+ */
 export const radius = {
-  xs: 6,
-  sm: 10,
-  md: 14,
-  lg: 18,
-  xl: 22,
-  "2xl": 28,
+  /** Top-level card, sheet, or bar. */
+  card: 20,
+  /** A surface nested inside another surface. */
+  nested: 12,
+  /** Chips, pills, avatars, round buttons. */
   pill: 999,
+
+  /** @deprecated Use `nested`. */
+  xs: 12,
+  /** @deprecated Use `nested`. */
+  sm: 12,
+  /** @deprecated Use `nested`. */
+  md: 12,
+  /** @deprecated Use `card`. */
+  lg: 20,
+  /** @deprecated Use `card`. */
+  xl: 20,
+  /** @deprecated Use `card`. */
+  "2xl": 20,
 };
 
+/**
+ * The type scale.
+ *
+ * Floor is 12px — nothing renders smaller. Sentence case throughout and no
+ * letter-spacing: both were there to make small text look deliberate, and both
+ * break the moment the string is translated into Arabic. Weights are capped at
+ * 700 apart from `display`, so the scale reads as a hierarchy rather than as
+ * shouting.
+ *
+ * Numerals in `metric` should be rendered with tabular figures
+ * (`fontVariant: ["tabular-nums"]`) so counters do not jitter as they count.
+ */
 export const typography = {
   display: {
     fontSize: 34,
-    lineHeight: 40,
-    fontWeight: "900" as const,
-    fontFamily: "Adcure",
+    lineHeight: 38,
+    fontWeight: "800" as const,
   },
   title: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: "900" as const,
+    fontSize: 26,
+    lineHeight: 32,
+    fontWeight: "700" as const,
   },
   heading: {
-    fontSize: 18,
+    fontSize: 19,
     lineHeight: 24,
-    fontWeight: "800" as const,
+    fontWeight: "700" as const,
+  },
+  /** Large numerals: a weight total, a calorie count, a streak. */
+  metric: {
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: "700" as const,
+    fontVariant: ["tabular-nums" as const],
   },
   body: {
     fontSize: 15,
-    lineHeight: 21,
-    fontWeight: "500" as const,
+    lineHeight: 22,
+    fontWeight: "400" as const,
   },
-  bodySmall: {
-    fontSize: 13,
-    lineHeight: 18,
+  /** Body copy that needs to carry emphasis without becoming a heading. */
+  bodyStrong: {
+    fontSize: 15,
+    lineHeight: 22,
     fontWeight: "600" as const,
   },
+  /** The floor. Field labels, captions, metadata, chip text. */
   label: {
-    fontSize: 11,
-    lineHeight: 14,
-    fontWeight: "900" as const,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.8,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600" as const,
   },
+  /** Button text. Reuses the `bodyStrong` step — buttons are not their own scale. */
   button: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "900" as const,
-    textTransform: "uppercase" as const,
-    letterSpacing: 0.5,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "600" as const,
   },
-  metric: {
-    fontSize: 28,
-    lineHeight: 34,
-    fontWeight: "900" as const,
+
+  /** @deprecated Use `label`. There is no 13px step. */
+  bodySmall: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600" as const,
+  },
+  /** @deprecated Use `label`. The uppercase variant no longer exists. */
+  labelNeutral: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600" as const,
+  },
+  /** @deprecated Use `button`. */
+  buttonNeutral: {
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "600" as const,
   },
 };
 
+/** Icons come in three sizes. A fourth is a design mistake, not a requirement. */
 export const iconSize = {
   sm: 16,
   md: 20,
   lg: 24,
-  xl: 28,
+  /** @deprecated Not on the scale. Use `lg`. */
+  xl: 24,
 };
 
 export const touchTarget = {
+  /** 44×44, always. Anything tappable smaller than this needs `hitSlop`. */
   min: 44,
   comfortable: 48,
   large: 56,
@@ -86,4 +162,3 @@ export const motion = {
   standard: 220,
   slow: 320,
 };
-

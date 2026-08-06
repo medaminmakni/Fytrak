@@ -70,6 +70,8 @@ export type CoachTrainee = {
   assignmentStatus?: "assigned" | "pending" | "rejected" | "expired" | "unassigned";
   selectedCoachId?: string | null;
   selectedCoachName?: string | null;
+  activeAssignmentId?: string | null;
+  timezone?: string | null;
   clientSummary?: ClientSummary;
 };
 
@@ -105,13 +107,20 @@ const toDateOrNull = (value: unknown): Date | null => {
 // --- COACH PROFILE ---
 
 export const saveCoachProfile = async (uid: string, payload: CoachProfilePayload): Promise<void> => {
+  const bio = payload.bio.trim();
+  const experience = Number(payload.experience) || 0;
+  if (!uid) throw new Error("User id is required.");
+  if (bio.length <= 10) throw new Error("A short professional bio is required.");
+  if (payload.specialties.length === 0) throw new Error("Select at least one specialty.");
+  if (experience < 0) throw new Error("Experience cannot be negative.");
+
   const ref = doc(db, usersCollection, uid);
   await setDoc(ref, {
     profileCompleted: true,
     coachProfile: {
-      bio: payload.bio.trim(),
+      bio,
       specialties: payload.specialties,
-      experience: payload.experience,
+      experience,
     },
     updatedAt: serverTimestamp(),
   }, { merge: true });
@@ -138,47 +147,78 @@ export const fetchCoaches = async (): Promise<Coach[]> => {
 
 // --- TRAINEE MANAGEMENT ---
 
-export const subscribeToCoachTrainees = (coachId: string, callback: (trainees: CoachTrainee[]) => void) => {
+export const subscribeToCoachTrainees = (
+  coachId: string,
+  callback: (trainees: CoachTrainee[]) => void,
+  onError?: (error: unknown) => void
+) => {
   const q = query(
     collection(db, usersCollection),
     where("selectedCoachId", "==", coachId),
     where("assignmentStatus", "==", "assigned"),
+    // NOTE: deliberately no orderBy here. Ordering by clientSummary.updatedAt
+    // would silently DROP any client whose clientSummary has not been written
+    // yet (Firestore excludes documents missing the ordered field) — i.e.
+    // brand-new clients would disappear from the roster. Sorting is done
+    // client-side instead. The 100 cap therefore truncates by document ID;
+    // paginate here before a coach can realistically exceed 100 clients.
     limit(100)
   );
-  return onSnapshot(q, (snapshot) => {
-    const trainees = snapshot.docs.map(doc => {
-      const data = doc.data();
-      const profile = data.profile || {};
-      return {
-        id: doc.id,
-        ...data,
-        profile: {
-          ...profile,
-          goal: profile.basic?.goal || profile.goal,
-          goalText: profile.basic?.goal || profile.goalText || profile.goal,
-        },
-      } as CoachTrainee;
-    });
-    callback(trainees);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const trainees = snapshot.docs.map(doc => {
+        const data = doc.data();
+        const profile = data.profile || {};
+        return {
+          id: doc.id,
+          ...data,
+          profile: {
+            ...profile,
+            goal: profile.basic?.goal || profile.goal,
+            goalText: profile.basic?.goal || profile.goalText || profile.goal,
+          },
+        } as CoachTrainee;
+      });
+      callback(trainees);
+    },
+    (error) => {
+      console.error("[CoachService] Coach trainees subscription failed:", error);
+      // Surface the failure so subscriptionCache can evict rather than cache
+      // this as a legitimate empty roster. Still emit [] so the UI renders an
+      // empty state instead of hanging on a spinner.
+      onError?.(error);
+      callback([]);
+    }
+  );
 };
 
-export const fetchCoachClientSignal = async (trainee: CoachTrainee): Promise<CoachClientSignal> => {
-  const lastWorkoutAt = toDateOrNull(trainee.clientSummary?.lastWorkoutAt);
+/**
+ * Pure projection of an already-loaded roster document. Performs NO I/O —
+ * every field comes from the `clientSummary` map that the roster snapshot
+ * already carries. Prefer this (inside a useMemo) over the async wrappers
+ * below, which only exist for backward compatibility and force callers into
+ * a needless loading state for a synchronous computation.
+ */
+export const toCoachClientSignal = (trainee: CoachTrainee): CoachClientSignal => ({
+  traineeId: trainee.id,
+  lastWorkoutAt: toDateOrNull(trainee.clientSummary?.lastWorkoutAt),
+  workoutsLast7Days: trainee.clientSummary?.workoutsLast7Days ?? 0,
+  mealsLast7Days: trainee.clientSummary?.mealsLast7Days ?? 0,
+  avgDailyProtein: trainee.clientSummary?.avgDailyProtein ?? 0,
+  proteinTarget: trainee.macroTargets?.protein ?? null,
+});
 
-  return {
-    traineeId: trainee.id,
-    lastWorkoutAt,
-    workoutsLast7Days: trainee.clientSummary?.workoutsLast7Days ?? 0,
-    mealsLast7Days: trainee.clientSummary?.mealsLast7Days ?? 0,
-    avgDailyProtein: trainee.clientSummary?.avgDailyProtein ?? 0,
-    proteinTarget: trainee.macroTargets?.protein ?? null,
-  };
-};
+export const toCoachClientSignals = (trainees: CoachTrainee[]): CoachClientSignal[] =>
+  trainees.map(toCoachClientSignal);
 
-export const fetchCoachClientSignals = async (trainees: CoachTrainee[]): Promise<CoachClientSignal[]> => {
-  return Promise.all(trainees.map(fetchCoachClientSignal));
-};
+/** @deprecated synchronous under the hood — use `toCoachClientSignal`. */
+export const fetchCoachClientSignal = async (trainee: CoachTrainee): Promise<CoachClientSignal> =>
+  toCoachClientSignal(trainee);
+
+/** @deprecated synchronous under the hood — use `toCoachClientSignals`. */
+export const fetchCoachClientSignals = async (trainees: CoachTrainee[]): Promise<CoachClientSignal[]> =>
+  toCoachClientSignals(trainees);
 
 export const respondToTraineeRequest = async (traineeId: string, accept: boolean): Promise<void> => {
   await resolveCoachRequest(traineeId, accept);
@@ -200,18 +240,25 @@ export const updateCoachTemplate = async (coachId: string, templateId: string, u
 
 export const subscribeToCoachTemplates = (coachId: string, type: "workout" | "meal" | null, callback: (templates: CoachTemplate[]) => void) => {
   const coll = collection(db, usersCollection, coachId, "templates");
-  const q = type ? query(coll, where("type", "==", type)) : query(coll);
-  return onSnapshot(q, (snapshot) => {
-    const templates = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as CoachTemplate)).sort((a, b) => {
-      const timeA = a.createdAt?.seconds || 0;
-      const timeB = b.createdAt?.seconds || 0;
-      return timeB - timeA;
-    });
-    callback(templates);
-  });
+  const q = type ? query(coll, where("type", "==", type), limit(50)) : query(coll, limit(50));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const templates = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as CoachTemplate)).sort((a, b) => {
+        const timeA = a.createdAt?.seconds || 0;
+        const timeB = b.createdAt?.seconds || 0;
+        return timeB - timeA;
+      });
+      callback(templates);
+    },
+    (error) => {
+      console.error("[CoachService] Coach templates subscription failed:", error);
+      callback([]);
+    }
+  );
 };
 
 export const deleteCoachTemplate = async (coachId: string, templateId: string): Promise<void> => {

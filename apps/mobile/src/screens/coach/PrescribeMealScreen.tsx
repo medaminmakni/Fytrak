@@ -1,3 +1,4 @@
+import { ToastService } from "../../components/Toast";
 import { useEffect, useState } from "react";
 import {
     StyleSheet,
@@ -6,7 +7,6 @@ import {
     ScrollView,
     TextInput,
     Pressable,
-    Alert,
     ActivityIndicator,
     Modal,
     KeyboardAvoidingView,
@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { savePrescribedMeal, CoachTemplate, subscribeToCoachTemplates } from "../../services/userSession";
 import { auth } from "../../config/firebase";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { parseScheduleDateInput } from "../../features/plans/scheduleInput";
 import { Typography } from "../../components/Typography";
 import { useFoodSearch } from "../../hooks/useFoodSearch";
 import type { FoodItem } from "../../services/nutritionSearchService";
@@ -25,9 +26,11 @@ import type { FoodItem } from "../../services/nutritionSearchService";
 export function PrescribeMealScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { traineeId, traineeName } = route.params;
+    const { traineeId = "", traineeName = "" } = route.params ?? {};
 
     const [title, setTitle] = useState("");
+    // Blank = unscheduled, preserving the pre-Phase-D behaviour.
+    const [scheduledDate, setScheduledDate] = useState("");
     const [description, setDescription] = useState("");
     const [macros, setMacros] = useState({ calories: 0, protein: 0, carbs: 0, fats: 0 });
 
@@ -76,7 +79,14 @@ export function PrescribeMealScreen() {
 
     const handleSave = async () => {
         if (!title.trim() || (!description.trim() && macros.calories === 0)) {
-            Alert.alert("Missing Info", "Please provide a title and either a description or macros.");
+            ToastService.error("Missing Info", "Please provide a title and either a description or macros.");
+            return;
+        }
+
+        // Validated before any write so a malformed date never reaches Firestore.
+        const schedule = parseScheduleDateInput(scheduledDate);
+        if (!schedule.ok) {
+            ToastService.error("Check the date", schedule.message);
             return;
         }
 
@@ -92,7 +102,7 @@ export function PrescribeMealScreen() {
                 description: description.trim(),
                 macros: macros,
                 isApplied: false
-            });
+            }, schedule.scheduledDateKey);
 
             if (saveAsTemplate) {
                 const { saveCoachTemplate } = require("../../services/userSession");
@@ -103,12 +113,13 @@ export function PrescribeMealScreen() {
                 });
             }
 
-            Alert.alert("Success", "Plan assigned successfully!", [
-                { text: "OK", onPress: () => navigation.goBack() }
-            ]);
+            ToastService.success("Nutrition assigned", schedule.scheduledDateKey
+                    ? `Scheduled for ${schedule.scheduledDateKey}. Your client will see it as that day's nutrition plan.`
+                    : "Unscheduled — your client will see this plan in Nutrition and can apply the targets.");
+            navigation.goBack();
         } catch (error) {
             console.error(error);
-            Alert.alert("Error", "Failed to assign plan.");
+            ToastService.error("Error", "Failed to assign plan.");
         } finally {
             setIsSubmitting(false);
         }
@@ -119,7 +130,7 @@ export function PrescribeMealScreen() {
 
     return (
         <ScreenShell
-            title="PRESCRIBE"
+            title="Prescribe a meal"
             subtitle={`NUTRITION PLAN FOR ${traineeName?.toUpperCase()}`}
             contentStyle={styles.shellContent}
         >
@@ -134,7 +145,7 @@ export function PrescribeMealScreen() {
                     <View style={styles.topActionRow}>
                         <Pressable
                             style={styles.actionCard}
-                            onPress={() => templates.length > 0 ? setLibModalVisible(true) : Alert.alert("Library Empty", "Save a meal plan first.")}
+                            onPress={() => templates.length > 0 ? setLibModalVisible(true) : ToastService.error("Library Empty", "Save a meal plan first.")}
                         >
                             <Ionicons name="library" size={20} color="#4ade80" />
                             <Typography variant="label" color="#4ade80">LIBRARY</Typography>
@@ -148,11 +159,11 @@ export function PrescribeMealScreen() {
                             <Typography variant="h2">Food Database</Typography>
                         </View>
                         <View style={styles.searchBarWrapper}>
-                            <Ionicons name="search" size={18} color="#666" style={styles.searchIcon} />
+                            <Ionicons name="search" size={18} color={colors.iconFaint} style={styles.searchIcon} />
                             <TextInput
                                 style={styles.searchInput}
                                 placeholder="Search nutrition data..."
-                                placeholderTextColor="#444"
+                                placeholderTextColor={colors.textDim}
                                 value={query}
                                 onChangeText={setQuery}
                             />
@@ -163,11 +174,11 @@ export function PrescribeMealScreen() {
                                 {results.slice(0, 5).map(food => (
                                     <Pressable key={food.id} style={styles.resultItem} onPress={() => selectFood(food)}>
                                         <View style={styles.resultIconBg}>
-                                            <Ionicons name="fast-food" size={14} color={food.isVerified ? colors.primary : "#444"} />
+                                            <Ionicons name="fast-food" size={14} color={food.isVerified ? colors.primary : colors.iconFaint} />
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Typography variant="h2" style={{ fontSize: 13 }} numberOfLines={1}>{food.name}</Typography>
-                                            <Typography variant="label" color="#666" style={{ fontSize: 9 }}>{food.calories} kcal • {food.protein}g P</Typography>
+                                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>{food.calories} kcal • {food.protein}g P</Typography>
                                         </View>
                                         <Ionicons name="add-circle" size={18} color={colors.primary} />
                                     </Pressable>
@@ -183,21 +194,41 @@ export function PrescribeMealScreen() {
                             <Typography variant="h2">Plan Core</Typography>
                         </View>
                         <View style={styles.inputGroup}>
-                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>PLAN TITLE</Typography>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>PLAN TITLE</Typography>
                             <TextInput
                                 placeholder="e.g. Aggressive Lean Bulk"
-                                placeholderTextColor="#444"
+                                placeholderTextColor={colors.textDim}
                                 style={styles.textInput}
                                 value={title}
                                 onChangeText={setTitle}
                             />
                         </View>
                         <View style={styles.inputGroup}>
-                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>GUIDELINES & PROTOCOL</Typography>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>
+                                SCHEDULE FOR (OPTIONAL)
+                            </Typography>
+                            <TextInput
+                                placeholder="YYYY-MM-DD"
+                                placeholderTextColor={colors.textDim}
+                                style={styles.textInput}
+                                value={scheduledDate}
+                                onChangeText={setScheduledDate}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                keyboardType="numbers-and-punctuation"
+                            />
+                            <Typography variant="label" color={colors.textDim} style={{ fontSize: 11 }}>
+                                {scheduledDate.trim()
+                                    ? `Scheduled for ${scheduledDate.trim()} — nutrition only; the workout plan is unaffected.`
+                                    : "Unscheduled — shown in your client's nutrition list, not tied to a day."}
+                            </Typography>
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>GUIDELINES & PROTOCOL</Typography>
                             <TextInput
                                 style={[styles.textInput, { height: 100, textAlignVertical: 'top' }]}
                                 placeholder="Specify meal timing, portions, and supplementation..."
-                                placeholderTextColor="#444"
+                                placeholderTextColor={colors.textDim}
                                 multiline
                                 value={description}
                                 onChangeText={setDescription}
@@ -227,10 +258,10 @@ export function PrescribeMealScreen() {
                         onPress={() => setSaveAsTemplate(!saveAsTemplate)}
                     >
                         <View style={styles.templateRow}>
-                            <Ionicons name={saveAsTemplate ? "cloud-done" : "cloud-upload-outline"} size={22} color={saveAsTemplate ? "#4ade80" : "#444"} />
+                            <Ionicons name={saveAsTemplate ? "cloud-done" : "cloud-upload-outline"} size={22} color={saveAsTemplate ? "#4ade80" : colors.iconFaint} />
                             <View style={{ flex: 1 }}>
                                 <Typography variant="h2" style={{ fontSize: 15 }}>Sync to Library</Typography>
-                                <Typography variant="label" color="#8c8c8c">Make this plan available for other trainees.</Typography>
+                                <Typography variant="label" color={colors.textMuted}>Make this plan available for other trainees.</Typography>
                             </View>
                         </View>
                     </Pressable>
@@ -264,15 +295,15 @@ export function PrescribeMealScreen() {
                             </Pressable>
                         </View>
                         <View style={styles.modalSearch}>
-                            <Ionicons name="search" size={18} color="#666" />
-                            <TextInput style={styles.modalSearchInput} placeholder="Search plans..." placeholderTextColor="#666" value={libSearchQuery} onChangeText={setLibSearchQuery} />
+                            <Ionicons name="search" size={18} color={colors.iconFaint} />
+                            <TextInput style={styles.modalSearchInput} placeholder="Search plans..." placeholderTextColor={colors.textMuted} value={libSearchQuery} onChangeText={setLibSearchQuery} />
                         </View>
                         <ScrollView showsVerticalScrollIndicator={false}>
                             {filteredTemplates.map(t => (
                                 <Pressable key={t.id} style={styles.modalItem} onPress={() => applyTemplate(t)}>
                                     <View style={{ flex: 1 }}>
                                         <Typography variant="h2">{t.title}</Typography>
-                                        <Typography variant="label" color="#666">{t.data.macros?.calories || 0} kcal | {t.data.macros?.protein || 0}g P</Typography>
+                                        <Typography variant="label" color={colors.textMuted}>{t.data.macros?.calories || 0} kcal | {t.data.macros?.protein || 0}g P</Typography>
                                     </View>
                                     <Ionicons name="add-circle" size={24} color="#4ade80" />
                                 </Pressable>
@@ -288,7 +319,7 @@ export function PrescribeMealScreen() {
 function MacroField({ label, value, onChange, color }: any) {
     return (
         <View style={styles.macroBox}>
-            <Typography variant="label" color="#666" style={{ fontSize: 8, textAlign: 'center' }}>{label}</Typography>
+            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11, textAlign: 'center' }}>{label}</Typography>
             <TextInput
                 keyboardType="numeric"
                 style={[styles.macroInput, { color }]}
@@ -310,7 +341,7 @@ const styles = StyleSheet.create({
     cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
     
     searchBarWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', borderRadius: 16, paddingHorizontal: 16, height: 50, gap: 12, borderWidth: 1, borderColor: '#1c1c1e' },
-    searchIcon: { marginRight: 0 },
+    searchIcon: { marginEnd: 0 },
     searchInput: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
     
     resultsList: { gap: 8, marginTop: 4 },

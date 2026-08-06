@@ -22,7 +22,7 @@ export function DailyTrainingReport({ workout }: DailyTrainingReportProps) {
           <View style={styles.cardHeader}>
             <View>
               <Typography variant="h2" style={{ fontSize: 18 }}>{workout.name}</Typography>
-              <Typography variant="label" color="#666">
+              <Typography variant="label" color={colors.textMuted}>
                 {workout.duration || 0} min • {workout.totalVolume || 0}kg volume
               </Typography>
             </View>
@@ -41,7 +41,7 @@ export function DailyTrainingReport({ workout }: DailyTrainingReportProps) {
         </View>
       ) : (
         <View style={styles.emptyCard}>
-          <Typography variant="label" color="#444">Rest Day - No workout logged</Typography>
+          <Typography variant="label" color={colors.textDim}>Rest Day - No workout logged</Typography>
         </View>
       )}
     </View>
@@ -50,7 +50,7 @@ export function DailyTrainingReport({ workout }: DailyTrainingReportProps) {
 
 const styles = StyleSheet.create({
   section: { gap: spacing.md, marginBottom: spacing.xl },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginLeft: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginStart: 4 },
   sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   card: { backgroundColor: "#111", borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: "#222" },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: spacing.xl },

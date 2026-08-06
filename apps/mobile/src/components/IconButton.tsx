@@ -1,7 +1,7 @@
 import { Pressable, StyleProp, StyleSheet, ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
-import { radius, touchTarget } from "../theme/tokens";
+import { iconSize, touchTarget } from "../theme/tokens";
 
 type IconButtonProps = {
   icon: keyof typeof Ionicons.glyphMap;
@@ -24,7 +24,7 @@ export function IconButton({
 }: IconButtonProps) {
   const dimension = size === "lg" ? touchTarget.large : touchTarget.comfortable;
   const iconColor = disabled
-    ? colors.textFaint
+    ? colors.textTertiary
     : tone === "primary"
       ? colors.primary
       : tone === "danger"
@@ -47,7 +47,7 @@ export function IconButton({
         style,
       ]}
     >
-      <Ionicons name={icon} size={size === "lg" ? 26 : 22} color={iconColor} />
+      <Ionicons name={icon} size={iconSize.lg} color={iconColor} />
     </Pressable>
   );
 }
@@ -56,21 +56,23 @@ const styles = StyleSheet.create({
   base: {
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
   },
   default: {
-    backgroundColor: colors.surfaceMuted,
-    borderColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceInset,
   },
   primary: {
     backgroundColor: colors.primaryMuted,
-    borderColor: "rgba(255, 204, 0, 0.26)",
   },
   danger: {
     backgroundColor: colors.dangerMuted,
-    borderColor: "rgba(248, 113, 113, 0.28)",
   },
+  /*
+   * Not `opacity: 0.5`. Opacity multiplies against whatever is behind the
+   * button, so the same disabled control looked different on `bg` than on a
+   * card, and the glyph could drop below 4.5:1 on either. The icon colour
+   * already carries the state.
+   */
   disabled: {
-    opacity: 0.5,
+    backgroundColor: colors.surfaceInset,
   },
 });

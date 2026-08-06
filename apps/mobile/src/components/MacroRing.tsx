@@ -40,7 +40,7 @@ export const MacroRing = ({ current, target, label }: { current: number, target:
         </Svg>
         <View style={{ position: 'absolute', alignItems: 'center' }}>
           <Typography variant="h2" style={{ fontSize: 24, lineHeight: 28 }}>{current}</Typography>
-          <Typography variant="label" style={{ color: '#888', fontSize: 10 }}>/ {target} kcal</Typography>
+          <Typography variant="label" style={{ color: '#888', fontSize: 11 }}>/ {target} kcal</Typography>
         </View>
       </View>
       <Typography variant="label" style={{ color: '#fff', fontSize: 14, marginTop: 8, fontWeight: '700' }}>{label}</Typography>

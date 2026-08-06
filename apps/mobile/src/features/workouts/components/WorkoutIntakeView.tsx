@@ -76,7 +76,7 @@ export function WorkoutIntakeView({ onComplete }: WorkoutIntakeViewProps) {
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.onboardCard}>
-        <SectionTitle title="EXPERIENCE" icon="fitness" />
+        <SectionTitle title="Experience" icon="fitness" />
         <View style={styles.groupRow}>
           {(["Beginner", "Intermediate", "Advanced"] as const).map((item) => (
             <Pressable
@@ -95,18 +95,18 @@ export function WorkoutIntakeView({ onComplete }: WorkoutIntakeViewProps) {
           <Text style={styles.label}>Training Months?</Text>
           <TextInput
             style={styles.input}
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.textMuted}
             value={trainingExp}
             onChangeText={setTrainingExp}
           />
         </View>
 
-        <SectionTitle title="HEALTH" icon="medkit" />
+        <SectionTitle title="Health" icon="medkit" />
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Injuries?</Text>
           <TextInput
             style={styles.input}
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.textMuted}
             value={injuries}
             onChangeText={setInjuries}
           />
@@ -147,13 +147,13 @@ export function WorkoutIntakeView({ onComplete }: WorkoutIntakeViewProps) {
             style={[styles.input, styles.multiLineInput]}
             multiline
             placeholder="Describe any issues..."
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.textMuted}
             value={healthIssues}
             onChangeText={setHealthIssues}
           />
         </View>
 
-        <SectionTitle title="WORK LIFE" icon="briefcase" />
+        <SectionTitle title="Work life" icon="briefcase" />
         <View style={styles.inputGroup}>
           <View style={styles.row}>
             <TimeInput
@@ -256,10 +256,10 @@ const styles = StyleSheet.create({
     borderColor: "#2c2c2e",
   },
   pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pillText: { color: "#8c8c8c", fontSize: 11, fontWeight: "900" },
+  pillText: { color: colors.textMuted, fontSize: 11, fontWeight: "900" },
   pillTextActive: { color: "#000" },
   inputGroup: { gap: 4, marginBottom: 12 },
-  label: { color: "#8c8c8c", fontSize: 14, fontWeight: "600", marginBottom: 4 },
+  label: { color: colors.textMuted, fontSize: 14, fontWeight: "600", marginBottom: 4 },
   input: {
     backgroundColor: "#1c1c1e",
     borderRadius: 14,
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     borderColor: "#2c2c2e",
   },
   timeValue: { color: "#fff", fontSize: 13 },
-  timerLabel: { color: "#444", fontSize: 8, fontWeight: "900" },
+  timerLabel: { color: colors.textDim, fontSize: 11, fontWeight: "900" },
   finishBtn: {
     backgroundColor: colors.primary,
     borderRadius: radius.xl,

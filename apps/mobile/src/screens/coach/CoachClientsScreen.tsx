@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
+import { ToastService } from "../../components/Toast";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View, TextInput, type ListRenderItem } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { auth } from "../../config/firebase";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
 import {
-    fetchCoachClientSignals,
+    toCoachClientSignals,
+    fetchActiveAssignmentThreadId,
     subscribeToCoachTrainees,
-    type CoachClientSignal,
     type CoachTrainee
 } from "../../services/userSession";
 import { useNavigation } from "@react-navigation/native";
@@ -15,54 +16,41 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
 import { scoreCoachClient, type CoachClientRisk } from "../../features/coaching/coachIntelligence";
 
+const keyExtractor = (trainee: CoachTrainee) => trainee.id;
+
 export function CoachClientsScreen() {
     const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
-    const [clientSignals, setClientSignals] = useState<CoachClientSignal[]>([]);
     const [search, setSearch] = useState("");
     const [isLoading, setIsLoading] = useState(true);
-    const [isLoadingSignals, setIsLoadingSignals] = useState(false);
     const [activeFilter, setActiveFilter] = useState<"all" | "needs" | "new">("all");
     const [sortMode, setSortMode] = useState<"priority" | "az">("priority");
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    // See CoachInboxScreen: auth.currentUser is null on a cold start while
+    // AsyncStorage persistence rehydrates, so this must react to uid.
+    const uid = useCurrentUser();
 
     useEffect(() => {
-        const user = auth.currentUser;
-        if (!user) return;
+        if (!uid) {
+            setTrainees([]);
+            setIsLoading(false);
+            return;
+        }
 
-        const unsubscribe = subscribeToCoachTrainees(user.uid, (data) => {
+        setIsLoading(true);
+
+        const unsubscribe = subscribeToCoachTrainees(uid, (data) => {
             const assigned = data.filter((t) => t.assignmentStatus === "assigned");
             setTrainees(assigned);
             setIsLoading(false);
         });
 
         return () => unsubscribe();
-    }, []);
+    }, [uid]);
 
-    useEffect(() => {
-        let isMounted = true;
-
-        if (trainees.length === 0) {
-            setClientSignals([]);
-            return;
-        }
-
-        setIsLoadingSignals(true);
-        fetchCoachClientSignals(trainees)
-            .then((signals) => {
-                if (isMounted) setClientSignals(signals);
-            })
-            .catch((error) => {
-                console.error("Failed to load client signals:", error);
-                if (isMounted) setClientSignals([]);
-            })
-            .finally(() => {
-                if (isMounted) setIsLoadingSignals(false);
-            });
-
-        return () => {
-            isMounted = false;
-        };
-    }, [trainees]);
+    // Pure projection over data the roster snapshot already carries — no I/O,
+    // so no effect and no loading state (this previously ran as an async
+    // effect that flashed a spinner on every snapshot).
+    const clientSignals = useMemo(() => toCoachClientSignals(trainees), [trainees]);
 
     const searchTerm = search.trim().toLowerCase();
     const riskById = useMemo(() => {
@@ -108,6 +96,44 @@ export function CoachClientsScreen() {
         return list;
     }, [activeFilter, clientSignals, riskById, searchTerm, sortMode, trainees]);
 
+    const openDetail = useCallback((trainee: CoachTrainee) => {
+        navigation.navigate("TraineeDetail", {
+            traineeId: trainee.id,
+            traineeName: trainee.name || "Anonymous",
+            traineeTimezone: trainee.timezone ?? null,
+        });
+    }, [navigation]);
+
+    const openChat = useCallback((trainee: CoachTrainee) => {
+        if (!uid || !trainee.activeAssignmentId) {
+            ToastService.error("Conversation unavailable", "This client has no active conversation.");
+            return;
+        }
+        void fetchActiveAssignmentThreadId(trainee.activeAssignmentId)
+            .then((threadId) => {
+                if (!threadId) {
+                    ToastService.error("Conversation unavailable", "This client has no active conversation.");
+                    return;
+                }
+                navigation.navigate("CoachChat", {
+                    traineeId: trainee.id,
+                    traineeName: trainee.name || "Anonymous",
+                    coachId: uid,
+                    threadId,
+                });
+            })
+            .catch(() => ToastService.error("Conversation unavailable", "Could not open the conversation. Please try again."));
+    }, [navigation, uid]);
+
+    const renderClientRow = useCallback<ListRenderItem<CoachTrainee>>(({ item }) => (
+        <ClientRow
+            trainee={item}
+            risk={riskById.get(item.id) || "low"}
+            onOpenDetail={openDetail}
+            onOpenChat={openChat}
+        />
+    ), [riskById, openDetail, openChat]);
+
     return (
         <ScreenShell
             title="Clients"
@@ -116,10 +142,10 @@ export function CoachClientsScreen() {
         >
             <View style={styles.headerRow}>
                 <View style={styles.searchBar}>
-                    <Ionicons name="search" size={18} color="#666" />
+                    <Ionicons name="search" size={18} color={colors.iconFaint} />
                     <TextInput
                         placeholder="Search trainees..."
-                        placeholderTextColor="#666"
+                        placeholderTextColor={colors.textMuted}
                         style={styles.searchInput}
                         value={search}
                         onChangeText={setSearch}
@@ -147,60 +173,81 @@ export function CoachClientsScreen() {
                     <ActivityIndicator color={colors.primary} />
                 </View>
             ) : (
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.list}>
-                    {isLoadingSignals && (
-                        <View style={styles.signalLoader}>
-                            <ActivityIndicator size="small" color={colors.primary} />
-                            <Text style={styles.signalText}>Updating roster insights...</Text>
-                        </View>
-                    )}
-                    {filtered.length === 0 ? (
+                <FlatList
+                    data={filtered}
+                    keyExtractor={keyExtractor}
+                    renderItem={renderClientRow}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={styles.list}
+                    initialNumToRender={12}
+                    maxToRenderPerBatch={12}
+                    windowSize={7}
+                    removeClippedSubviews
+                    ListEmptyComponent={
                         <View style={styles.emptyBox}>
-                            <Text style={styles.emptyText}>No clients found.</Text>
+                            <Ionicons name="people-outline" size={28} color={colors.iconFaint} />
+                            <Text style={styles.emptyText}>
+                                {trainees.length === 0 ? "No clients assigned yet." : "No clients match this view."}
+                            </Text>
+                            <Text style={styles.emptySubtext}>
+                                {trainees.length === 0 ? "Accepted client requests will appear here." : "Try another search or filter."}
+                            </Text>
                         </View>
-                    ) : (
-                        filtered.map((t) => (
-                            <Pressable
-                                key={t.id}
-                                style={styles.clientCard}
-                                onPress={() => navigation.navigate("TraineeDetail", { traineeId: t.id, traineeName: t.name || "Anonymous" })}
-                            >
-                                {t.clientSummary?.unreadCoachCount ? (
-                                    <View style={styles.unreadDot} />
-                                ) : null}
-                                <View style={styles.avatar}>
-                                    <Text style={styles.avatarText}>{(t.name || "?")[0]}</Text>
-                                </View>
-                                <View style={styles.info}>
-                                    <Text style={styles.name}>{t.name || "Anonymous"}</Text>
-                                    <View style={styles.statusRow}>
-                                        <View style={styles.statusDot} />
-                                    <Text style={styles.goal}>{t.profile?.goalText || t.profile?.goal || "General Fitness"}</Text>
-                                    </View>
-                                </View>
-                                <View style={styles.riskBadge}>
-                                    <Text style={styles.riskText}>{(riskById.get(t.id) || "low").toUpperCase()}</Text>
-                                </View>
-                                <Pressable
-                                    style={styles.actionBtn}
-                                    onPress={() => navigation.navigate("CoachChat", { traineeId: t.id, traineeName: t.name || "Anonymous", coachId: auth.currentUser?.uid || "unknown" })}
-                                >
-                                    <Ionicons name="chatbubble-ellipses" size={18} color={colors.primary} />
-                                    {t.clientSummary?.unreadCoachCount ? (
-                                        <View style={styles.unreadBadge}>
-                                            <Text style={styles.unreadText}>{t.clientSummary.unreadCoachCount}</Text>
-                                        </View>
-                                    ) : null}
-                                </Pressable>
-                                <Ionicons name="chevron-forward" size={20} color="#333" />
-                            </Pressable>
-                        ))
-                    )}
-                </ScrollView>
+                    }
+                />
             )}
         </ScreenShell>
     );
 }
+
+type ClientRowProps = {
+    trainee: CoachTrainee;
+    risk: CoachClientRisk;
+    onOpenDetail: (trainee: CoachTrainee) => void;
+    onOpenChat: (trainee: CoachTrainee) => void;
+};
+
+/**
+ * Memoized so a roster snapshot that changes one client does not re-render
+ * every other row. Props are primitives/stable callbacks for this reason.
+ */
+const ClientRow = memo(function ClientRow({ trainee, risk, onOpenDetail, onOpenChat }: ClientRowProps) {
+    const unread = trainee.clientSummary?.unreadCoachCount ?? 0;
+    const name = trainee.name || "Anonymous";
+
+    return (
+        <Pressable style={styles.clientCard} onPress={() => onOpenDetail(trainee)}>
+            {unread ? <View style={styles.unreadDot} /> : null}
+            <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{(trainee.name || "?")[0]}</Text>
+            </View>
+            <View style={styles.info}>
+                <Text style={styles.name}>{name}</Text>
+                <View style={styles.statusRow}>
+                    <View style={styles.statusDot} />
+                    <Text style={styles.goal}>{trainee.profile?.goalText || trainee.profile?.goal || "General Fitness"}</Text>
+                </View>
+            </View>
+            <View style={styles.riskBadge}>
+                <Text style={styles.riskText}>{risk.toUpperCase()}</Text>
+            </View>
+            <Pressable
+                style={styles.actionBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Message ${name}${unread ? `, ${unread} unread` : ""}`}
+                onPress={() => onOpenChat(trainee)}
+            >
+                <Ionicons name="chatbubble-ellipses" size={18} color={colors.primary} />
+                {unread ? (
+                    <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadText}>{unread}</Text>
+                    </View>
+                ) : null}
+            </Pressable>
+            <Ionicons name="chevron-forward" size={20} color="#333" />
+        </Pressable>
+    );
+});
 
 function FilterChip({
     label,
@@ -254,7 +301,7 @@ const styles = StyleSheet.create({
         borderColor: colors.primary,
     },
     filterText: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 12,
         fontWeight: "700",
     },
@@ -317,18 +364,6 @@ const styles = StyleSheet.create({
         paddingBottom: 100,
         gap: 12,
     },
-    signalLoader: {
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 8,
-        paddingHorizontal: 4,
-        marginBottom: 6,
-    },
-    signalText: {
-        color: "#666",
-        fontSize: 12,
-        fontWeight: "600",
-    },
     clientCard: {
         flexDirection: "row",
         alignItems: "center",
@@ -342,7 +377,7 @@ const styles = StyleSheet.create({
     unreadDot: {
         position: "absolute",
         top: 12,
-        left: 12,
+        start: 12,
         width: 8,
         height: 8,
         borderRadius: 4,
@@ -384,7 +419,7 @@ const styles = StyleSheet.create({
         backgroundColor: colors.primary,
     },
     goal: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 12,
         fontWeight: "600",
     },
@@ -398,7 +433,7 @@ const styles = StyleSheet.create({
     },
     riskText: {
         color: colors.primary,
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: "900",
         letterSpacing: 0.6,
     },
@@ -415,7 +450,7 @@ const styles = StyleSheet.create({
     unreadBadge: {
         position: "absolute",
         top: -6,
-        right: -6,
+        end: -6,
         minWidth: 18,
         height: 18,
         borderRadius: 9,
@@ -426,16 +461,24 @@ const styles = StyleSheet.create({
     },
     unreadText: {
         color: "#000",
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: "900",
     },
     emptyBox: {
         padding: 40,
         alignItems: "center",
+        gap: 8,
     },
     emptyText: {
-        color: "#444",
+        color: colors.textDim,
         fontSize: 14,
         fontWeight: "600",
+        textAlign: "center",
+    },
+    emptySubtext: {
+        color: colors.textMuted,
+        fontSize: 12,
+        fontWeight: "600",
+        textAlign: "center",
     }
 });

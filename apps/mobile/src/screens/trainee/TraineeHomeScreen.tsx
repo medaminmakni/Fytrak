@@ -1,5 +1,6 @@
+import { ToastService } from "../../components/Toast";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, View, ActivityIndicator, ScrollView, Text } from "react-native";
+import { I18nManager, Pressable, StyleSheet, View, ActivityIndicator, ScrollView, Text } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { spacing, radius } from "../../theme/tokens";
@@ -13,13 +14,14 @@ import { EXERCISE_LIBRARY, ExerciseLibraryItem } from "../../constants/exercises
 import { trackEvent } from "../../services/analytics";
 import { useTraineeDashboard } from "../../hooks/useTraineeDashboard";
 import { DashboardActionCard } from "../../components/DashboardActionCard";
+import { Surface } from "../../components/Surface";
 import { TodayMissionCard } from "../../features/retention/components/TodayMissionCard";
 import type { TodayMissionItemId } from "../../features/retention/todayMission";
 import { updateCheckInTaskStatus } from "../../services/userSession";
 import { logOut } from "../../services/auth";
-import { ToastService } from "../../components/Toast";
 import { toSafeDate } from "../../utils/chartFilters";
 import { auth } from "../../config/firebase";
+import type { ProgramSession } from "../../services/programService";
 
 type TraineeHomeScreenProps = {
   onQuickAskCoach: () => void;
@@ -32,10 +34,12 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
   const {
     profile,
     workouts,
-    prescribed,
-    prescribedMeals,
     metrics,
     programs,
+    todayWorkoutPlan,
+    todayNutritionPlan,
+    unscheduledWorkouts,
+    unscheduledMeals,
     checkInTasks,
     isLoading,
     isPremium,
@@ -80,7 +84,10 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
         navigation.navigate("Workouts", { autoLoadPrescriptionId: payload.prescriptionId });
         break;
       case "workout":
-        navigation.navigate("Workouts");
+        navigation.navigate(
+          "Workouts",
+          payload?.programSession ? { programSession: payload.programSession } : undefined
+        );
         break;
       case "nutrition":
         navigation.navigate("Nutrition");
@@ -101,8 +108,15 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
     });
 
     if (missionId === "workout") {
-      if (prescribed.length > 0) {
-        navigation.navigate("Workouts", { autoLoadPrescriptionId: prescribed[0].id });
+      const dailyPrescription = todayWorkoutPlan.sourceType === "daily"
+        && todayWorkoutPlan.payload.isCompleted !== true
+        ? todayWorkoutPlan.payload
+        : null;
+      const actionablePrescription = dailyPrescription ?? unscheduledWorkouts[0];
+      if (actionablePrescription) {
+        navigation.navigate("Workouts", { autoLoadPrescriptionId: actionablePrescription.id });
+      } else if (todayWorkoutPlan.sourceType === "program") {
+        navigation.navigate("Workouts", { programSession: todayWorkoutPlan.payload as ProgramSession });
       } else {
         navigation.navigate("Workouts");
       }
@@ -166,16 +180,16 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
               >
                 <View style={styles.bannerInfo}>
                   <Ionicons 
-                      name={profile?.assignmentStatus === 'pending' ? "hourglass-outline" : "sparkles"} 
+                      name={profile?.assignmentStatus === 'pending' ? "hourglass-outline" : profile?.assignmentStatus === 'rejected' ? "refresh-circle-outline" : "sparkles"}
                       size={24} 
                       color={colors.primary} 
                   />
                   <View>
                     <Typography variant="h2" style={{ fontSize: 16 }}>
-                      {profile?.assignmentStatus === 'pending' ? "Coach Request Pending" : "Find Your Coach"}
+                      {profile?.assignmentStatus === 'pending' ? "Coach Request Pending" : profile?.assignmentStatus === 'rejected' ? "Coach Request Declined" : "Find Your Coach"}
                     </Typography>
                     <Typography variant="label" color={colors.textMuted}>
-                      {profile?.assignmentStatus === 'pending' ? `Waiting for ${profile?.selectedCoachName}` : "Unlock custom plans from elite coaches"}
+                      {profile?.assignmentStatus === 'pending' ? `Waiting for ${profile?.selectedCoachName}` : profile?.assignmentStatus === 'rejected' ? "Choose another coach when you're ready" : "Unlock custom plans from elite coaches"}
                     </Typography>
                   </View>
                 </View>
@@ -196,7 +210,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
             <DashboardActionCard action={primaryAction} onPress={handlePrimaryAction} />
 
             {/* TODAY STATS SUMMARY */}
-            <View style={styles.card}>
+            <Surface tone="muted" style={styles.card}>
               <View style={styles.cardHeader}>
                 <Ionicons name="stats-chart" size={18} color={colors.primary} />
                 <Typography variant="h2">Today Status</Typography>
@@ -213,27 +227,27 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                     <View style={styles.sideStatBox}>
                        <Ionicons name="body-outline" size={16} color={colors.textFaint} />
                        <View>
-                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 10 }}>BODY WEIGHT</Typography>
-                         <Typography variant="h2" style={{ fontSize: 16 }}>{metrics[0]?.weight || profile?.weight || "--"} <Typography style={{ fontSize: 10, color: colors.textDim }}>kg</Typography></Typography>
+                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 11 }}>BODY WEIGHT</Typography>
+                         <Typography variant="h2" style={{ fontSize: 16 }}>{metrics[0]?.weight || profile?.weight || "--"} <Typography style={{ fontSize: 11, color: colors.textDim }}>kg</Typography></Typography>
                        </View>
                     </View>
                     <View style={styles.sideStatBox}>
                        <Ionicons name={workouts.length > 0 ? "checkmark-circle" : "time-outline"} size={16} color={workouts.length > 0 ? colors.success : colors.textFaint} />
                        <View>
-                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 10 }}>WORKOUT</Typography>
+                         <Typography variant="label" color={colors.textFaint} style={{ fontSize: 11 }}>WORKOUT</Typography>
                          <Typography variant="h2" style={{ fontSize: 16, color: workouts.length > 0 ? colors.success : colors.text }}>{workoutStatus}</Typography>
                        </View>
                     </View>
                   </View>
                 </View>
               </View>
-            </View>
+            </Surface>
 
             {/* TODAY MISSION TRACKER */}
             <TodayMissionCard mission={todayMission} onAction={handleMissionAction} />
 
             {hasAssignedCoach && checkInTasks.length > 0 && (
-              <View style={styles.card}>
+              <Surface tone="muted" style={styles.card}>
                 <View style={styles.cardHeader}>
                   <Ionicons name="clipboard" size={18} color={colors.primary} />
                   <Typography variant="h2">Coach check-ins</Typography>
@@ -278,23 +292,26 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                     {checkInTasks.length - 3} more tasks waiting
                   </Typography>
                 )}
-              </View>
+              </Surface>
             )}
 
 
 
             {/* ACTIVE PROGRAM & COACH PLANS */}
             <CoachPlansSection 
-                isPremium={isPremium}
+                isPremium={isPremium || hasAssignedCoach}
                 programs={programs}
-                prescribed={prescribed}
-                prescribedMeals={prescribedMeals}
+                todayWorkoutPlan={todayWorkoutPlan}
+                todayNutritionPlan={todayNutritionPlan}
+                unscheduledWorkouts={unscheduledWorkouts}
+                unscheduledMeals={unscheduledMeals}
+                hasWorkoutToday={workouts.length > 0}
                 navigation={navigation}
                 onSelectExercise={setSelectedEx}
             />
 
             {/* UTILITY ACTIONS */}
-            <View style={styles.card}>
+            <Surface tone="muted" style={styles.card}>
               <View style={styles.cardHeader}>
                 <Ionicons name="compass" size={18} color={colors.primary} />
                 <Typography variant="h2">Support tools</Typography>
@@ -325,7 +342,7 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
                   </Pressable>
                 )}
               </View>
-            </View>
+            </Surface>
           </View>
         </ScrollView>
       )}
@@ -339,69 +356,88 @@ export function TraineeHomeScreen({ onQuickAskCoach }: TraineeHomeScreenProps) {
   );
 }
 
-function CoachPlansSection({ isPremium, programs, prescribed, prescribedMeals, navigation, onSelectExercise }: any) {
+function CoachPlansSection({
+    isPremium,
+    programs,
+    todayWorkoutPlan,
+    todayNutritionPlan,
+    unscheduledWorkouts,
+    unscheduledMeals,
+    hasWorkoutToday,
+    navigation,
+    onSelectExercise,
+}: any) {
     if (!isPremium) {
         return (
-            <View style={[styles.card, { borderStyle: 'dashed', opacity: 0.8 }]}>
+            <Surface tone="muted" style={[styles.card, { borderStyle: 'dashed', opacity: 0.8 }]}>
                 <View style={[styles.cardHeader, { opacity: 0.5 }]}>
                     <Ionicons name="lock-closed" size={18} color={colors.textFaint} />
                     <Typography variant="h2" style={{ color: colors.textFaint }}>Custom Coach Plans</Typography>
                 </View>
                 <Typography variant="label" color={colors.textDim}>Upgrade to premium to receive personalized training and nutrition plans from your coach.</Typography>
-            </View>
+            </Surface>
         );
     }
+
+    const dailyWorkout = todayWorkoutPlan.sourceType === "daily" ? todayWorkoutPlan.payload : null;
+    const programWorkout = todayWorkoutPlan.sourceType === "program" ? todayWorkoutPlan.payload : null;
+    const visibleWorkout = dailyWorkout ?? programWorkout ?? unscheduledWorkouts[0] ?? null;
+    const workoutPrescriptionId = dailyWorkout?.id ?? (!programWorkout ? unscheduledWorkouts[0]?.id : null);
+    const visibleMeal = todayNutritionPlan.sourceType === "daily"
+        ? todayNutritionPlan.payload
+        : unscheduledMeals[0] ?? null;
 
     return (
         <>
             {programs.length > 0 && (() => {
                 const activeProgram = programs[0];
-                const currentWeek = activeProgram.weeks.find((w: any) => w.sessions.some((s: any) => !s.isCompleted)) || activeProgram.weeks[activeProgram.weeks.length - 1];
-                const currentSession = currentWeek?.sessions.find((s: any) => !s.isCompleted);
                 const completedSessions = activeProgram.weeks.reduce((sum: number, w: any) => sum + w.sessions.filter((s: any) => s.isCompleted).length, 0);
                 const totalSessions = activeProgram.weeks.reduce((sum: number, w: any) => sum + w.sessions.length, 0);
                 const progressPct = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : 0;
 
                 return (
-                    <View style={[styles.card, { borderColor: colors.danger, backgroundColor: '#1a1010' }]}>
+                    <Surface tone="muted" style={[styles.card, { borderColor: colors.danger, backgroundColor: '#1a1010' }]}>
                         <View style={styles.cardHeader}>
                             <Ionicons name="calendar" size={18} color={colors.danger} />
                             <Typography variant="h2">Active Program</Typography>
                             <View style={[styles.coachBadge, { backgroundColor: colors.danger }]}>
-                                <Typography style={{ fontSize: 9, color: '#000', fontWeight: '900' }}>{activeProgram.level}</Typography>
+                                <Typography style={{ fontSize: 11, color: '#000', fontWeight: '900' }}>{activeProgram.level}</Typography>
                             </View>
                         </View>
                         <View style={styles.prescribedContent}>
                             <Typography variant="h2" style={{ fontSize: 20 }}>{activeProgram.title}</Typography>
                             <Typography variant="label" color={colors.textMuted}>
-                                {currentWeek ? `Week ${currentWeek.weekNumber}` : 'Complete'} | {currentSession ? currentSession.title : 'All done!'} | By {activeProgram.coachName}
+                                {activeProgram.startDateKey ? `Starts ${activeProgram.startDateKey}` : "Unscheduled program"} | By {activeProgram.coachName}
                             </Typography>
                         </View>
                         <View style={styles.progressBarTrack}>
                             <View style={[styles.progressBarFill, { width: `${progressPct}%`, backgroundColor: colors.danger }]} />
                         </View>
-                        <Typography variant="label" color={colors.textFaint} style={{ textAlign: 'right', fontSize: 10 }}>{progressPct}% complete ({completedSessions}/{totalSessions} sessions)</Typography>
-                    </View>
+                        <Typography variant="label" color={colors.textFaint} style={{ textAlign: I18nManager.isRTL ? 'left' : 'right', fontSize: 11 }}>{progressPct}% · {completedSessions} of {totalSessions}</Typography>
+                    </Surface>
                 );
             })()}
 
-            {prescribed.length > 0 && (
-                <View style={[styles.card, { borderColor: colors.primary, backgroundColor: "#1a1a10" }]}>
+            {visibleWorkout && (
+                <Surface tone="muted" style={[styles.card, { borderColor: colors.primary, backgroundColor: "#1a1a10" }]}>
                     <View style={styles.cardHeader}>
                         <Ionicons name="barbell-outline" size={18} color={colors.primary} />
-                        <Typography variant="h2">Upcoming Workout</Typography>
+                        <Typography variant="h2">
+                            {todayWorkoutPlan.sourceType !== "none" ? "Today's Workout" : "Unscheduled Workout"}
+                        </Typography>
                         <View style={styles.coachBadge}>
-                            <Typography style={{ fontSize: 9, color: '#000', fontWeight: '900' }}>COACH ASSIGNED</Typography>
+                            <Typography style={{ fontSize: 11, color: '#000', fontWeight: '900' }}>COACH ASSIGNED</Typography>
                         </View>
                     </View>
                     <View style={styles.prescribedContent}>
-                        <Typography variant="h2" style={{ fontSize: 20 }}>{prescribed[0].title}</Typography>
+                        <Typography variant="h2" style={{ fontSize: 20 }}>{visibleWorkout.title}</Typography>
                         <Typography variant="label" color={colors.textMuted}>
-                            {prescribed[0].exercises.length} exercises | By {prescribed[0].coachName}
+                            {visibleWorkout.exercises.length} exercises
+                            {visibleWorkout.coachName ? ` | By ${visibleWorkout.coachName}` : ""}
                         </Typography>
 
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.previewRow}>
-                            {prescribed[0].exercises.map((pEx: any, idx: number) => {
+                            {visibleWorkout.exercises.map((pEx: any, idx: number) => {
                                 const libEx = EXERCISE_LIBRARY.find(l => l.name.en.toLowerCase() === pEx.name.toLowerCase());
                                 return (
                                     <Pressable 
@@ -418,35 +454,43 @@ function CoachPlansSection({ isPremium, programs, prescribed, prescribedMeals, n
                             })}
                         </ScrollView>
                     </View>
-                    <Pressable
-                        style={styles.startPrescribedBtn}
-                        onPress={() => Alert.alert("Start Workout", `Prepare for ${prescribed[0].title}?`, [
-                            { text: "Later", style: "cancel" },
-                            {
-                                text: "Start Now",
-                                onPress: () => navigation.navigate("Workouts", { autoLoadPrescriptionId: prescribed[0].id })
-                            }
-                        ])}
-                    >
-                        <Typography style={{ color: colors.primaryText, fontWeight: "900", fontSize: 14 }}>START SESSION</Typography>
-                        <Ionicons name="play" size={16} color={colors.primaryText} />
-                    </Pressable>
-                </View>
+                    {visibleWorkout.isCompleted || hasWorkoutToday ? (
+                        <Typography variant="label" color={colors.success}>Logged today</Typography>
+                    ) : (
+                        <Pressable
+                            style={styles.startPrescribedBtn}
+                            onPress={() => ToastService.confirm({
+                                title: "Start this session?",
+                                message: `${visibleWorkout.title} is ready when you are.`,
+                                confirmLabel: "Start now",
+                                cancelLabel: "Later",
+                                onConfirm: () => workoutPrescriptionId
+                                    ? navigation.navigate("Workouts", { autoLoadPrescriptionId: workoutPrescriptionId })
+                                    : navigation.navigate("Workouts", { programSession: visibleWorkout }),
+                            })}
+                        >
+                            <Typography style={{ color: colors.primaryText, fontWeight: "900", fontSize: 14 }}>START SESSION</Typography>
+                            <Ionicons name="play" size={16} color={colors.primaryText} />
+                        </Pressable>
+                    )}
+                </Surface>
             )}
 
-            {prescribedMeals.length > 0 && (
-                <View style={[styles.card, { borderColor: colors.success, backgroundColor: "#101a14" }]}>
+            {visibleMeal && (
+                <Surface tone="muted" style={[styles.card, { borderColor: colors.success, backgroundColor: "#101a14" }]}>
                     <View style={styles.cardHeader}>
                         <Ionicons name="restaurant-outline" size={18} color={colors.success} />
-                        <Typography variant="h2">New Nutrition Plan</Typography>
+                        <Typography variant="h2">
+                            {todayNutritionPlan.sourceType === "daily" ? "Today's Nutrition Plan" : "Unscheduled Nutrition Plan"}
+                        </Typography>
                         <View style={[styles.coachBadge, { backgroundColor: colors.success }]}>
-                            <Typography style={{ fontSize: 9, color: '#000', fontWeight: '900' }}>COACH ASSIGNED</Typography>
+                            <Typography style={{ fontSize: 11, color: '#000', fontWeight: '900' }}>COACH ASSIGNED</Typography>
                         </View>
                     </View>
                     <View style={styles.prescribedContent}>
-                        <Typography variant="h2" style={{ fontSize: 20 }}>{prescribedMeals[0].title}</Typography>
+                        <Typography variant="h2" style={{ fontSize: 20 }}>{visibleMeal.title}</Typography>
                         <Typography variant="label" color={colors.textMuted}>
-                            {prescribedMeals[0].macros.calories} kcal | {prescribedMeals[0].macros.protein}g Protein
+                            {visibleMeal.macros.calories} kcal | {visibleMeal.macros.protein}g Protein
                         </Typography>
                     </View>
                     <Pressable
@@ -456,7 +500,7 @@ function CoachPlansSection({ isPremium, programs, prescribed, prescribedMeals, n
                         <Typography style={{ color: "#000", fontWeight: "900", fontSize: 14 }}>REVIEW PLAN</Typography>
                         <Ionicons name="nutrition" size={16} color="#000" />
                     </Pressable>
-                </View>
+                </Surface>
             )}
         </>
     );
@@ -466,7 +510,7 @@ function PremiumBadge() {
   return (
     <View style={styles.premiumBadge}>
       <Ionicons name="star" size={10} color="#000" />
-      <Typography style={{ fontSize: 9, color: '#000', fontWeight: '900' }}>PREMIUM</Typography>
+      <Typography style={{ fontSize: 11, color: '#000', fontWeight: '900' }}>PREMIUM</Typography>
     </View>
   );
 }
@@ -496,16 +540,19 @@ const styles = StyleSheet.create({
     gap: spacing.lg,
   },
   greetingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
-  card: { backgroundColor: colors.surfaceMuted, borderRadius: radius["2xl"], padding: spacing.xl, borderWidth: 1, borderColor: colors.borderStrong, gap: spacing.lg },
+  // Geometry and surface now come from <Surface tone="muted">; this keeps only
+  // the internal layout. The per-card colour overrides at the call sites are
+  // left untouched here — recolouring those is P1-3, not P1-1.
+  card: { gap: spacing.lg },
   cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
   statsGrid: { gap: 4 },
   ringContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgDark, padding: spacing.xl, borderRadius: radius["2xl"], borderWidth: 1, borderColor: colors.borderSubtle },
-  ringSideStats: { flex: 1, marginLeft: 24, gap: 16 },
+  ringSideStats: { flex: 1, marginStart: 24, gap: 16 },
   sideStatBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   previewRow: { flexDirection: 'row', marginTop: 12, marginBottom: 4 },
-  previewItem: { alignItems: 'center', width: 80, gap: 6, marginRight: 12 },
+  previewItem: { alignItems: 'center', width: 80, gap: 6, marginEnd: 12 },
   previewIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: 'rgba(255,204,0,0.1)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,204,0,0.2)' },
-  previewText: { color: colors.textSecondary, fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  previewText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700', textAlign: 'center' },
   
   actionsGrid: { flexDirection: "row", gap: spacing.md },
   actionButton: { flex: 1, flexDirection: "row", backgroundColor: colors.primary, borderRadius: radius.md, alignItems: "center", justifyContent: "center", paddingVertical: spacing.lg, gap: 8 },
@@ -513,22 +560,22 @@ const styles = StyleSheet.create({
   disabledAction: { backgroundColor: "#222", borderColor: "#333", borderWidth: 1 },
   actionButtonText: { color: colors.primaryText, fontWeight: "900", fontSize: 14, textTransform: "uppercase" },
 
-  taskCountPill: { marginLeft: "auto", backgroundColor: colors.primaryMuted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
-  taskCountText: { color: colors.primary, fontSize: 10, fontWeight: "900" },
+  taskCountPill: { marginStart: "auto", backgroundColor: colors.primaryMuted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: radius.pill },
+  taskCountText: { color: colors.primary, fontSize: 11, fontWeight: "900" },
   taskList: { gap: spacing.md },
   taskItem: { flexDirection: "row", alignItems: "center", gap: spacing.md, backgroundColor: colors.bgDark, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSubtle },
   taskInfo: { flex: 1, gap: 4 },
   taskTitle: { fontSize: 14 },
-  taskDesc: { fontSize: 9, letterSpacing: 0.6 },
-  taskDue: { fontSize: 9, letterSpacing: 0.6 },
+  taskDesc: { fontSize: 11, letterSpacing: 0.6 },
+  taskDue: { fontSize: 11, letterSpacing: 0.6 },
   taskActions: { flexDirection: "row", gap: 8 },
   taskActionBtn: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center", borderWidth: 1 },
   taskActionComplete: { backgroundColor: colors.primary, borderColor: colors.primary },
   taskActionDismiss: { backgroundColor: "transparent", borderColor: colors.borderStrong },
-  moreTasksText: { textAlign: "right", fontSize: 10 },
+  moreTasksText: { textAlign: I18nManager.isRTL ? "left" : "right", fontSize: 11 },
 
-  premiumBadge: { flexDirection: "row", alignItems: "center", backgroundColor: colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.xs, gap: 4, marginLeft: 8 },
-  coachBadge: { marginLeft: "auto", backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.xs },
+  premiumBadge: { flexDirection: "row", alignItems: "center", backgroundColor: colors.primary, paddingHorizontal: 6, paddingVertical: 2, borderRadius: radius.xs, gap: 4, marginStart: 8 },
+  coachBadge: { marginStart: "auto", backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: radius.xs },
   prescribedContent: { gap: 4, marginTop: 4 },
   startPrescribedBtn: { backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: radius.md, gap: 10, marginTop: 10 },
   

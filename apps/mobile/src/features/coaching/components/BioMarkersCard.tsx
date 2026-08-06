@@ -39,11 +39,11 @@ export function BioMarkersCard({ weight, bodyFat }: BioMarkersCardProps) {
 
 const styles = StyleSheet.create({
   section: { gap: spacing.md },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 4 },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginStart: 4 },
   iconBox: { width: 26, height: 26, borderRadius: radius.xs, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  title: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
   grid: { flexDirection: 'row', gap: spacing.md },
   metricBox: { flex: 1, backgroundColor: colors.surfaceMuted, borderRadius: radius.lg, padding: spacing.lg, borderWidth: 1, borderColor: colors.borderStrong, gap: spacing.xxs },
-  metricLabel: { fontSize: 9 },
+  metricLabel: { fontSize: 11 },
   metricValue: { fontSize: 20 },
 });

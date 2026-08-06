@@ -1,39 +1,86 @@
-import React from 'react';
-import { Pressable, Text, StyleSheet, ViewStyle, StyleProp } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
-import { radius, spacing, touchTarget, typography } from '../theme/tokens';
+import { ActivityIndicator, Pressable, StyleProp, StyleSheet, Text, ViewStyle } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { colors } from "../theme/colors";
+import { iconSize, radius, spacing, touchTarget, typography } from "../theme/tokens";
 
-interface ButtonProps {
-  onPress: () => void;
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+
+export interface ButtonProps {
   title: string;
+  onPress: () => void;
+  variant?: ButtonVariant;
   icon?: keyof typeof Ionicons.glyphMap;
+  /** Icons lead by default; a trailing icon should mean "this goes somewhere". */
+  iconPosition?: "leading" | "trailing";
   disabled?: boolean;
+  /**
+   * Shows a spinner and blocks presses. Distinct from `disabled`: a loading
+   * button is announced as busy rather than unavailable, and the caller does
+   * not have to also pass `disabled` to prevent a second submit.
+   */
+  loading?: boolean;
   style?: StyleProp<ViewStyle>;
-  variant?: "primary" | "secondary" | "ghost" | "danger";
   accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
 
-export function PrimaryButton({ onPress, title, icon, disabled, style, variant = "primary", accessibilityLabel }: ButtonProps) {
-  const isPrimary = variant === "primary";
-  const iconColor = disabled ? colors.textFaint : isPrimary ? colors.primaryText : variant === "danger" ? colors.danger : colors.text;
+/**
+ * The one button in the app.
+ *
+ * `primary` is the single next action on a screen — if a screen has two, one of
+ * them is really a `secondary`. Variants differ by fill only; none of them
+ * carries an outline.
+ */
+export function PrimaryButton({
+  title,
+  onPress,
+  variant = "primary",
+  icon,
+  iconPosition = "leading",
+  disabled = false,
+  loading = false,
+  style,
+  accessibilityLabel,
+  accessibilityHint,
+}: ButtonProps) {
+  const isBlocked = disabled || loading;
+  const contentColor = isBlocked
+    ? colors.textTertiary
+    : variant === "primary"
+      ? colors.primaryText
+      : variant === "danger"
+        ? colors.danger
+        : colors.text;
+
+  const glyph = icon ? (
+    <Ionicons name={icon} size={iconSize.md} color={contentColor} />
+  ) : null;
 
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled}
+      disabled={isBlocked}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
-      accessibilityState={{ disabled: !!disabled }}
-      style={[
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isBlocked, busy: loading }}
+      style={({ pressed }) => [
         styles.button,
         styles[variant],
-        disabled && styles.buttonDisabled,
-        style
+        isBlocked && variant !== "ghost" && styles.blocked,
+        pressed && !isBlocked && styles.pressed,
+        style,
       ]}
     >
-      <Text style={[styles.text, !isPrimary && styles.textOnDark, variant === "danger" && styles.textDanger, disabled && styles.textDisabled]}>{title}</Text>
-      {icon && <Ionicons name={icon} size={20} color={iconColor} />}
+      {loading ? (
+        <ActivityIndicator size="small" color={contentColor} />
+      ) : (
+        iconPosition === "leading" && glyph
+      )}
+      <Text style={[styles.label, { color: contentColor }]} numberOfLines={1}>
+        {title}
+      </Text>
+      {!loading && iconPosition === "trailing" && glyph}
     </Pressable>
   );
 }
@@ -41,10 +88,10 @@ export function PrimaryButton({ onPress, title, icon, disabled, style, variant =
 const styles = StyleSheet.create({
   button: {
     minHeight: touchTarget.large,
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: radius.nested,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
   },
@@ -52,36 +99,27 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   secondary: {
-    backgroundColor: colors.surfaceMuted,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    backgroundColor: colors.surfaceInset,
   },
   ghost: {
     backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
   },
   danger: {
     backgroundColor: colors.dangerMuted,
-    borderWidth: 1,
-    borderColor: colors.danger,
   },
-  buttonDisabled: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1.5,
+  /*
+   * One blocked treatment for every filled variant. The old version kept each
+   * variant's fill and added a border, so a disabled danger button still read
+   * as an available red control.
+   */
+  blocked: {
+    backgroundColor: colors.surfaceInset,
   },
-  text: {
+  pressed: {
+    opacity: 0.82,
+  },
+  label: {
     ...typography.button,
-    color: colors.primaryText,
-  },
-  textOnDark: {
-    color: colors.text,
-  },
-  textDanger: {
-    color: colors.danger,
-  },
-  textDisabled: {
-    color: colors.textFaint,
+    textAlign: "center",
   },
 });
