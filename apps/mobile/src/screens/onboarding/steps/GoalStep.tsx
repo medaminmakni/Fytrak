@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#161616', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: '#333', gap: 12 },
   iBox: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   infoCol: { flex: 1 },
-  cardSub: { fontSize: 12, color: '#444', marginTop: 2, fontWeight: '600', lineHeight: 16 },
+  cardSub: { fontSize: 12, color: colors.textDim, marginTop: 2, fontWeight: '600', lineHeight: 16 },
   ring: { width: 20, height: 20, borderRadius: 10, borderWidth: 1.5, borderColor: '#222', alignItems: 'center', justifyContent: 'center' },
   dot: { width: 10, height: 10, borderRadius: 5 },
   footer: { paddingHorizontal: 24, paddingBottom: 30 },

@@ -37,11 +37,11 @@ export function TemplateLibraryModal({
                     </View>
 
                     <View style={styles.modalSearch}>
-                        <Ionicons name="search" size={18} color="#666" />
+                        <Ionicons name="search" size={18} color={colors.iconFaint} />
                         <TextInput
                             style={styles.modalSearchInput}
                             placeholder="Search templates..."
-                            placeholderTextColor="#666"
+                            placeholderTextColor={colors.textMuted}
                             value={searchQuery}
                             onChangeText={onSearchChange}
                         />
@@ -121,7 +121,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     emptyText: {
-        color: "#666",
+        color: colors.textMuted,
         fontSize: 14,
         textAlign: "center",
         marginTop: 40,
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
         fontWeight: "700",
     },
     modalItemSub: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 13,
         marginTop: 4,
     },

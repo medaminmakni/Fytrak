@@ -1,3 +1,4 @@
+import { ToastService } from "../../components/Toast";
 import { useState } from "react";
 import {
     StyleSheet,
@@ -6,7 +7,6 @@ import {
     ScrollView,
     TextInput,
     Pressable,
-    Alert,
     ActivityIndicator
 } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
@@ -71,7 +71,7 @@ export function EditCoachProfileScreen() {
 
     const handleSave = async () => {
         if (!name.trim() || !bio.trim() || specialties.length === 0) {
-            Alert.alert("Missing Info", "Please fill in your name, bio, and at least one specialty.");
+            ToastService.error("Missing Info", "Please fill in your name, bio, and at least one specialty.");
             return;
         }
 
@@ -91,26 +91,25 @@ export function EditCoachProfileScreen() {
                 updatedAt: serverTimestamp()
             }, { merge: true });
 
-            Alert.alert("Success", "Profile updated successfully!", [
-                { text: "OK", onPress: () => navigation.goBack() }
-            ]);
+            ToastService.success("Success", "Profile updated successfully!");
+            navigation.goBack();
         } catch (error) {
             console.error(error);
-            Alert.alert("Error", "Failed to save profile.");
+            ToastService.error("Error", "Failed to save profile.");
         } finally {
             setIsSaving(false);
         }
     };
 
     if (isLoading) return (
-        <ScreenShell title="Edit Profile" centered>
+        <ScreenShell title="Edit profile" centered>
             <ActivityIndicator color={colors.primary} />
         </ScreenShell>
     );
 
     return (
         <ScreenShell
-            title="Edit Coach Profile"
+            title="Edit coach profile"
             subtitle="Update your professional brand"
             contentStyle={styles.shellContent}
         >
@@ -120,7 +119,7 @@ export function EditCoachProfileScreen() {
                     <TextInput
                         style={styles.input}
                         placeholder="Your full name"
-                        placeholderTextColor="#444"
+                        placeholderTextColor={colors.textDim}
                         value={name}
                         onChangeText={setName}
                     />
@@ -131,7 +130,7 @@ export function EditCoachProfileScreen() {
                     <TextInput
                         style={[styles.input, styles.textArea]}
                         placeholder="Tell trainees about your philosophy and results..."
-                        placeholderTextColor="#444"
+                        placeholderTextColor={colors.textDim}
                         multiline
                         numberOfLines={4}
                         value={bio}
@@ -167,7 +166,7 @@ export function EditCoachProfileScreen() {
                         <TextInput
                             style={[styles.input, { flex: 1, marginBottom: 0 }]}
                             placeholder="Add a specialty (e.g. Powerlifting)"
-                            placeholderTextColor="#444"
+                            placeholderTextColor={colors.textDim}
                             value={newSpecialty}
                             onChangeText={setNewSpecialty}
                             onSubmitEditing={handleAddSpecialty}
@@ -185,7 +184,7 @@ export function EditCoachProfileScreen() {
                                 onPress={() => removeSpecialty(s)}
                             >
                                 <Text style={styles.tagText}>{s}</Text>
-                                <Ionicons name="close-circle" size={14} color={colors.primary} style={{ marginLeft: 4 }} />
+                                <Ionicons name="close-circle" size={14} color={colors.primary} style={{ marginStart: 4 }} />
                             </Pressable>
                         ))}
                     </View>
@@ -220,7 +219,7 @@ const styles = StyleSheet.create({
         fontWeight: "900",
         letterSpacing: 1,
         textTransform: "uppercase",
-        paddingLeft: 4,
+        paddingStart: 4,
     },
     input: {
         backgroundColor: "#161616",
@@ -319,7 +318,7 @@ const styles = StyleSheet.create({
     },
     stepperSubtext: {
         color: colors.primary,
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: "800",
         letterSpacing: 1,
         marginTop: -2,

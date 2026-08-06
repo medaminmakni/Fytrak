@@ -35,7 +35,7 @@ export const MetricCard = memo(({ icon, label, value, unit, color }: MetricCardP
         <Typography variant="metric" color="#fff" style={styles.value}>
           {value} <Typography style={styles.unit}>{unit}</Typography>
         </Typography>
-        <Typography variant="label" color="#666" style={styles.label}>
+        <Typography variant="label" color={colors.textMuted} style={styles.label}>
           {label.toUpperCase()}
         </Typography>
       </View>
@@ -79,7 +79,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   label: {
-    fontSize: 10,
+    fontSize: 11,
     marginTop: spacing.xxs,
     fontWeight: '800',
   },

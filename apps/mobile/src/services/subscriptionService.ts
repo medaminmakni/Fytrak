@@ -108,13 +108,20 @@ export const subscribeToSubscriptionEvents = (
     limit(20)
   );
 
-  return onSnapshot(q, (snapshot) => {
-    const events = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as RevenueCatWebhookEvent));
-    callback(events);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const events = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as RevenueCatWebhookEvent));
+      callback(events);
+    },
+    (error) => {
+      console.error("[SubscriptionService] Subscription events subscription failed:", error);
+      callback([]);
+    }
+  );
 };
 
 /**

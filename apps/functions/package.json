@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "lint:rules": "node scripts/checkRulesContract.cjs"
+    "lint:rules": "node scripts/checkRulesContract.cjs",
+    "test:logic": "node scripts/verifyReportLogic.cjs"
   },
   "dependencies": {
     "firebase-admin": "^13.10.0",

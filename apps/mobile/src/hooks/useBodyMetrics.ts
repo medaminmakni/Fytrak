@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import { subscribeToLatestMetrics, type BodyMetric } from "../services/profileService";
+import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import { useCurrentUser } from "./useCurrentUser";
 
 export function useBodyMetrics() {
@@ -17,10 +18,17 @@ export function useBodyMetrics() {
       return;
     }
 
-    const unsubscribe = subscribeToLatestMetrics(uid, (data) => {
-      setMetrics(data);
-      setIsLoading(false);
-    });
+    // Routed through subscribeWithCache: ProgressScreen keeps all four tabs
+    // mounted, and three of them consume this hook — without the cache that
+    // was three identical Firestore listeners for the same data.
+    const unsubscribe = subscribeWithCache<BodyMetric[]>(
+      `latestMetrics:${uid}`,
+      (emit) => subscribeToLatestMetrics(uid, emit),
+      (data) => {
+        setMetrics(data);
+        setIsLoading(false);
+      }
+    );
 
     return unsubscribe;
   }, [uid]);

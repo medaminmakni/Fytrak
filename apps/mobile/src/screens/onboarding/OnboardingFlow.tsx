@@ -1,5 +1,6 @@
+import { ToastService } from "../../components/Toast";
 import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, StyleSheet, Animated, Dimensions} from "react-native";
 import { GenderStep } from './steps/GenderStep';
 import { BirthdayStep } from './steps/BirthdayStep';
 import { BodyMetricsStep } from './steps/BodyMetricsStep';
@@ -12,7 +13,7 @@ import { calculateNutritionPlan } from '../../utils/calculators';
 const { width } = Dimensions.get('window');
 
 interface OnboardingFlowProps {
-  onComplete: (data: OnboardingData) => void;
+  onComplete: (data: OnboardingData) => Promise<void>;
   onExit: () => void;
 }
 
@@ -26,6 +27,7 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
     goal: null,
     level: null,
   });
+  const [isCompleting, setIsCompleting] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
   const direction = useRef<'next' | 'back' | null>(null);
@@ -40,17 +42,35 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
 
   const handleTransition = (nextStep: OnboardingStep | null, updatedData: OnboardingData, isNext: boolean) => {
     if (!nextStep) {
-      onComplete(updatedData);
+      void handleFinish(updatedData);
       return;
     }
 
     setFormData(updatedData);
     direction.current = isNext ? 'next' : 'back';
-    Animated.timing(slideAnim, { 
-      toValue: isNext ? -width : width, 
-      duration: 200, 
-      useNativeDriver: true 
+    Animated.timing(slideAnim, {
+      toValue: isNext ? -width : width,
+      duration: 200,
+      useNativeDriver: true
     }).start(() => setCurrentStep(nextStep));
+  };
+
+  const handleFinish = async (data: OnboardingData = formData) => {
+    if (isCompleting) return;
+    setIsCompleting(true);
+    try {
+      await onComplete(data);
+      // On success, the parent (RootNavigator) reacts to profileCompleted
+      // becoming true in Firestore and unmounts this screen — no explicit
+      // navigation needed here.
+    } catch (error) {
+      console.error('Failed to complete onboarding:', error);
+      setIsCompleting(false);
+      ToastService.error(
+        'Could Not Save Profile',
+        'Please check your connection and try again.'
+      );
+    }
   };
 
   const handleNext = (data?: any) => {
@@ -61,13 +81,22 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
       case 'METRICS':  return handleTransition('GOAL',     { ...updated, ...data }, true);
       case 'GOAL':     return handleTransition('LEVEL',    { ...updated, goal: data }, true);
       case 'LEVEL':    return handleTransition('SUCCESS',  { ...updated, level: data }, true);
-      case 'SUCCESS':  return onComplete(formData);
+      case 'SUCCESS':  return handleFinish();
     }
   };
 
   const handleBack = () => {
     switch (currentStep) {
-      case 'GENDER':   return onExit();
+      case 'GENDER':
+        ToastService.confirm({
+          title: 'Sign out?',
+          message: "You haven't finished setting up your profile. Going back now signs you out and your answers won't be saved.",
+          confirmLabel: 'Sign out',
+          cancelLabel: 'Stay',
+          destructive: true,
+          onConfirm: onExit,
+        });
+        return;
       case 'BIRTHDAY': return handleTransition('GENDER',  formData, false);
       case 'METRICS':  return handleTransition('BIRTHDAY', formData, false);
       case 'GOAL':     return handleTransition('METRICS',  formData, false);
@@ -84,7 +113,7 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
       case 'METRICS':  return <BodyMetricsStep {...props} />;
       case 'GOAL':     return <GoalStep {...props} />;
       case 'LEVEL':    return <LevelStep {...props} />;
-      case 'SUCCESS':  return <SuccessStep plan={calculateNutritionPlan(formData)} onFinish={() => handleNext()} />;
+      case 'SUCCESS':  return <SuccessStep plan={calculateNutritionPlan(formData)} onFinish={() => handleNext()} isSaving={isCompleting} />;
     }
   };
 

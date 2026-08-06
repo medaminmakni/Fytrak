@@ -9,7 +9,18 @@ import { ContextMenu, ContextMenuItem } from "./ContextMenu";
 
 type ScreenShellProps = PropsWithChildren<{
   title: ReactNode;
-  subtitle?: string;
+  /**
+   * A plain string gets the standard subtitle style. Pass a node only when the
+   * line needs structure the style cannot carry — the chat header's verified
+   * badge, for example — and match `styles.subtitle` when you do.
+   */
+  subtitle?: ReactNode;
+  /**
+   * Non-interactive content pinned to the trailing edge of the title row: an
+   * avatar, a status chip. Use `rightActionIcon` / `rightActionMenu` instead if
+   * it is meant to be tapped.
+   */
+  headerAccessory?: ReactNode;
   centered?: boolean;
   titleStyle?: StyleProp<TextStyle>;
   subtitleStyle?: StyleProp<TextStyle>;
@@ -25,6 +36,7 @@ type ScreenShellProps = PropsWithChildren<{
 export function ScreenShell({
   title,
   subtitle,
+  headerAccessory,
   centered = false,
   titleStyle,
   subtitleStyle,
@@ -57,13 +69,15 @@ export function ScreenShell({
                 numberOfLines={1} 
                 style={[styles.title, titleStyle, !centered && { flex: 1 }, centered && { textAlign: "center" }]}
               >
-                {title.toUpperCase()}
+                {title}
               </Text>
             ) : (
               <View style={[!centered && { flex: 1 }, centered && { alignItems: "center", justifyContent: "center" }]}>
                 {title}
               </View>
             )}
+
+            {headerAccessory}
 
             {(rightActionIcon || rightActionImageUri) && (onRightAction || rightActionMenu) && (
               <Pressable
@@ -90,6 +104,18 @@ export function ScreenShell({
               </Pressable>
             )}
           </View>
+          {typeof subtitle === "string" ? (
+            subtitle.trim() ? (
+              <Text
+                numberOfLines={2}
+                style={[styles.subtitle, subtitleStyle, centered && { textAlign: "center" }]}
+              >
+                {subtitle}
+              </Text>
+            ) : null
+          ) : (
+            subtitle ?? null
+          )}
         </View>
         <View style={[styles.content, centered && styles.contentCentered, contentStyle]}>{children}</View>
       </View>
@@ -138,7 +164,7 @@ const styles = StyleSheet.create({
   leftButton: {
     width: 36,
     height: 36,
-    marginRight: spacing.md,
+    marginEnd: spacing.md,
   },
   avatarButton: {
     borderWidth: 0,
@@ -154,8 +180,8 @@ const styles = StyleSheet.create({
   },
   menuButton: {
     width: "auto",
-    paddingLeft: spacing.xs,
-    paddingRight: spacing.xs,
+    paddingStart: spacing.xs,
+    paddingEnd: spacing.xs,
     backgroundColor: "transparent",
     borderWidth: 0,
   },
@@ -167,16 +193,25 @@ const styles = StyleSheet.create({
   chevron: {
     marginTop: 0,
   },
+  /*
+   * Screen titles were drifting: some screens passed "NUTRITION", some
+   * "Progress", some "Edit Coach Profile", and the header rendered whatever it
+   * was given plus 1.0 of letter-spacing. The casing is now fixed here rather
+   * than trusted to each caller — `textTransform: "none"` stops a screen
+   * re-uppercasing through `titleStyle`, and the letter-spacing is gone because
+   * it does not survive translation into Arabic.
+   */
   title: {
     ...typography.title,
     color: colors.primary,
-    letterSpacing: 1.0,
-    paddingRight: spacing.sm,
+    textTransform: "none",
+    paddingEnd: spacing.sm,
   },
   subtitle: {
     marginTop: spacing.xs,
-    color: colors.textMuted,
-    ...typography.bodySmall,
+    color: colors.textSecondary,
+    ...typography.body,
+    textTransform: "none",
   },
   content: {
     flex: 1,

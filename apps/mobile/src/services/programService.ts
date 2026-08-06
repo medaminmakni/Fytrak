@@ -10,9 +10,11 @@ import {
   addDoc,
   query,
   orderBy,
+  limit,
   serverTimestamp,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
+import { isValidDateKey } from "../utils/dateKeys";
 import type { WorkoutSetType } from "./workoutService";
 
 export type ProgramSuggestedSet = {
@@ -31,7 +33,18 @@ export type ProgramSessionExercise = {
 
 export type ProgramSession = {
   id: string;
+  /**
+   * Display ordinal within its week. NOT calendar placement — a program that
+   * skips or reorders sessions would land on the wrong dates if this were used
+   * to schedule. Use `dayOffset`.
+   */
   sessionNumber: number;
+  /**
+   * Whole days from the program's `startDateKey`. 0 is the start day.
+   * Absent means this session is unscheduled and is excluded from dated
+   * resolution rather than being given an invented date.
+   */
+  dayOffset?: number | null;
   title: string;
   description?: string;
   estimatedMinutes: number;
@@ -56,23 +69,70 @@ export type Program = {
   durationWeeks: number;
   weeks: ProgramWeek[];
   assignedAt: any;
+  /**
+   * The client-local date the program's day 0 falls on. Absent means the
+   * program is unscheduled: it still loads and renders in its existing screens,
+   * but it never contributes to dated plan resolution.
+   */
+  startDateKey?: string | null;
+  status?: "draft" | "published" | null;
+  planVersion?: number | null;
+  publishedAt?: any;
+  scheduleTimezone?: string | null;
 };
 
 const usersCollection = "users";
 
 // --- PROGRAM CRUD ---
 
+/**
+ * Assigns a multi-week program.
+ *
+ * `startDateKey` anchors day 0 to a client-local date. Sessions are then placed
+ * by their own explicit `dayOffset` — never by week number, session number or
+ * array position, all of which describe presentation order and drift the moment
+ * a coach reorders a week.
+ *
+ * Omitting `startDateKey` writes the program exactly as before Phase D: it
+ * loads and renders normally, but is unscheduled and excluded from dated
+ * resolution.
+ */
 export const saveProgram = async (coachId: string, traineeId: string, program: Omit<Program, "id" | "coachId" | "coachName" | "assignedAt">): Promise<void> => {
+  if (program.startDateKey && !isValidDateKey(program.startDateKey)) {
+    throw new Error("A program start date must be a valid YYYY-MM-DD client date.");
+  }
+
   const ref = collection(db, usersCollection, traineeId, "programs");
   const coachSnapshot = await getDoc(doc(db, usersCollection, coachId));
   const coachName = coachSnapshot.data()?.name || "Unknown Coach";
-  await addDoc(ref, { ...program, coachId, coachName, assignedAt: serverTimestamp() });
+  await addDoc(ref, {
+    ...program,
+    coachId,
+    coachName,
+    ...(program.startDateKey ? { status: "published", publishedAt: serverTimestamp() } : {}),
+    assignedAt: serverTimestamp(),
+  });
 };
 
-export const subscribeToTraineePrograms = (uid: string, callback: (programs: Program[]) => void) => {
-  const q = query(collection(db, usersCollection, uid, "programs"), orderBy("assignedAt", "desc"));
-  return onSnapshot(q, (snapshot) => {
-    const programs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Program));
-    callback(programs);
-  });
+export const subscribeToTraineePrograms = (
+  uid: string,
+  callback: (programs: Program[]) => void,
+  onError?: (error: Error) => void
+) => {
+  const q = query(collection(db, usersCollection, uid, "programs"), orderBy("assignedAt", "desc"), limit(10));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const programs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Program));
+      callback(programs);
+    },
+    (error) => {
+      console.error("[ProgramService] Trainee programs subscription failed:", error);
+      if (onError) {
+        onError(error);
+        return;
+      }
+      callback([]);
+    }
+  );
 };

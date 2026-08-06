@@ -9,11 +9,12 @@ import {
   setDoc,
   where,
   increment,
+  limit,
 } from "firebase/firestore";
 import { db } from "../config/firebase";
 import { localDateKeyDaysAgo } from "../utils/dateKeys";
 import type { ClientSummary as SharedClientSummary } from "../../../../packages/shared/src";
-import { callMarkCoachThreadRead } from "./backendFunctionsService";
+import { markThreadRead } from "./chatService";
 
 export type ClientSummary = SharedClientSummary;
 
@@ -60,7 +61,8 @@ export const updateClientSummaryAfterWorkout = async (uid: string): Promise<void
   const since = Timestamp.fromDate(new Date(Date.now() - 7 * 86400000));
   const q = query(
     collection(db, usersCollection, uid, "workouts"),
-    where("createdAt", ">=", since)
+    where("createdAt", ">=", since),
+    limit(100)
   );
 
   const snapshot = await getDocs(q);
@@ -77,7 +79,8 @@ export const updateClientSummaryAfterMeal = async (uid: string): Promise<void> =
   const dateStr = localDateKeyDaysAgo(6);
   const q = query(
     collection(db, usersCollection, uid, "meals"),
-    where("date", ">=", dateStr)
+    where("date", ">=", dateStr),
+    limit(100)
   );
 
   const snapshot = await getDocs(q);
@@ -114,12 +117,8 @@ export const updateClientSummaryAfterMessage = async (params: {
 
 export const clearCoachUnread = async (traineeId: string, threadId?: string): Promise<void> => {
   if (threadId) {
-    try {
-      await callMarkCoachThreadRead(threadId);
-      return;
-    } catch (error) {
-      if (!isNotFoundError(error)) throw error;
-    }
+    await markThreadRead(threadId);
+    return;
   }
 
   const updates = {

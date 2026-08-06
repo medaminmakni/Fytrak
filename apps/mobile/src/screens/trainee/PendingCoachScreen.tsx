@@ -39,7 +39,7 @@ export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
 
   return (
     <ScreenShell
-      title="Request Sent"
+      title="Request sent"
       subtitle="Waiting for coach approval"
       contentStyle={styles.shellContent}
     >
@@ -56,7 +56,7 @@ export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
           </Text>
 
           <View style={styles.featureGrid}>
-            <FeatureItem icon="chatbubbles" label="Direct Chat" sub="Message your coach anytime" />
+            <FeatureItem icon="chatbubbles" label="Direct Chat" sub="Unlocks after coach approval" />
             <FeatureItem icon="nutrition" label="Macro Tracking" sub="Log your meals as usual" />
             <FeatureItem icon="stats-chart" label="Daily Metrics" sub="Track weight and activity" />
           </View>
@@ -64,7 +64,7 @@ export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
 
         <View style={styles.actions}>
           <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color="#8c8c8c" />
+            <Ionicons name="log-out-outline" size={20} color={colors.textMuted} />
             <Text style={styles.logoutBtnText}>LOG OUT</Text>
           </Pressable>
 
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   description: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 15,
     textAlign: "center",
     lineHeight: 22,
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   featureSub: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: "500",
   },
@@ -199,7 +199,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   logoutBtnText: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontWeight: "800",
     fontSize: 14,
     letterSpacing: 0.5,
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     flex: 1,
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: "500",
     lineHeight: 18,

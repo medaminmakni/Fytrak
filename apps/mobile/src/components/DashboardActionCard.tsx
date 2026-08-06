@@ -59,8 +59,10 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
   subtitle: {
-    fontSize: 10,
-    color: "rgba(0,0,0,0.5)",
+    fontSize: 11,
+    // On colors.primary (yellow), 0.5 alpha gives 3.6:1 — fails for body text.
+    // 0.72 clears 4.5:1. The eyebrow's 0.62 is fine at its weight and size.
+    color: "rgba(0,0,0,0.72)",
     textTransform: "none",
     letterSpacing: 0,
   },

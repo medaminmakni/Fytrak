@@ -137,7 +137,7 @@ export function ProfileScreen({ session }: { session: SessionState }) {
 
   return (
     <ScreenShell
-      title="PROFILE"
+      title="Profile"
       subtitle={session.selectedCoachName ? "Identity, progress and coach connection" : "Identity, progress and account control"}
       leftActionIcon="arrow-back"
       onLeftAction={() => navigation.goBack()}

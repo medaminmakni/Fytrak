@@ -14,7 +14,7 @@ import {
   subscribeToDailyMeals,
   deleteMealLog,
   subscribeToUserProfile,
-  subscribeToPrescribedMeals,
+  subscribeToPrescribedMealHistory,
   applyPrescribedMeal,
   saveNutritionIntake,
   type Meal,
@@ -22,12 +22,22 @@ import {
   type PrescribedMeal
 } from "../../services/userSession";
 import { uploadMealPhoto } from "../../services/cloudinaryUpload";
+import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useClientDateKey } from "../../hooks/useClientDateKey";
 import { ToastService } from "../../components/Toast";
 import { WaterTracker } from "../../components/WaterTracker";
+import { Surface } from "../../components/Surface";
 import { LogMealModal } from "../../features/nutrition/components/LogMealModal";
 import { NutritionIntakeForm } from "../../features/nutrition/components/NutritionIntakeForm";
+import { resolvePlanDimension } from "../../features/plans/planResolution";
+import {
+  selectUnscheduled,
+  toMealCandidates,
+  type ScheduledPrescribedMeal,
+} from "../../features/plans/planAdapters";
 
 export function NutritionScreen() {
+  const uid = useCurrentUser();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [prescribed, setPrescribed] = useState<PrescribedMeal[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -37,30 +47,35 @@ export function NutritionScreen() {
   const [isSavingMeal, setIsSavingMeal] = useState(false);
   const [showIntake, setShowIntake] = useState(false);
   const [isSavingIntake, setIsSavingIntake] = useState(false);
+  const dateKey = useClientDateKey(profile?.timezone);
 
   useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!uid) return;
 
-    const unsubMeals = subscribeToDailyMeals(user.uid, (data) => {
+    const unsubMeals = subscribeToDailyMeals(uid, dateKey, (data) => {
       setMeals(data);
       if (profile) setIsLoading(false);
     });
 
-    const unsubProfile = subscribeToUserProfile(user.uid, (data) => {
+    const unsubProfile = subscribeToUserProfile(uid, (data) => {
       setProfile(data);
       if (data.nutritionProfileCompleted !== true) setShowIntake(true);
       setIsLoading(false);
     });
 
-    const unsubPrescribed = subscribeToPrescribedMeals(user.uid, (data) => {
+    const unsubPrescribed = subscribeToPrescribedMealHistory(uid, (data) => {
       setPrescribed(data);
     });
 
     return () => {
       unsubMeals(); unsubProfile(); unsubPrescribed();
     };
-  }, [profile?.uid]); // Add dependency if needed, but [] is usually fine for auth state if managed externally
+    // `profile` is intentionally not a dependency: it is set *by* this effect,
+    // so including it re-subscribes every listener on first load. uid and
+    // dateKey are the only real inputs — dateKey so the meal list rolls over
+    // at midnight rather than pinning to the day the screen was opened.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, dateKey]);
 
   const targets = useMemo(() => profile?.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 }, [profile]);
 
@@ -73,6 +88,22 @@ export function NutritionScreen() {
     }),
     { calories: 0, protein: 0, carbs: 0, fats: 0 }
   ), [meals]);
+
+  const scheduledMeals = prescribed as ScheduledPrescribedMeal[];
+  const todayNutritionPlan = useMemo(
+    () => resolvePlanDimension({
+      dateKey,
+      dailyCandidates: toMealCandidates(scheduledMeals),
+    }),
+    [dateKey, prescribed]
+  );
+  const unscheduledPlans = useMemo(
+    () => selectUnscheduled(scheduledMeals).filter((plan) => plan.isApplied !== true),
+    [prescribed]
+  );
+  const visibleCoachPlan = todayNutritionPlan.sourceType === "daily"
+    ? todayNutritionPlan.payload
+    : unscheduledPlans[0] ?? null;
 
   const handleSaveIntake = async (data: any) => {
     if (!auth.currentUser) return;
@@ -88,8 +119,7 @@ export function NutritionScreen() {
   };
 
   const handleSaveMeal = async (data: any) => {
-    const user = auth.currentUser;
-    if (!user) return;
+    if (!uid) return;
 
     try {
       setIsSavingMeal(true);
@@ -98,7 +128,7 @@ export function NutritionScreen() {
         const result = await uploadMealPhoto(data.imageUri);
         imageUrl = result.secureUrl;
       }
-      await saveMealLog(user.uid, {
+      await saveMealLog(uid, {
         name: data.name,
         calories: data.calories,
         protein: data.protein,
@@ -106,7 +136,7 @@ export function NutritionScreen() {
         fats: data.fats,
         time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         ...(imageUrl && { imageUrl }),
-      });
+      }, profile?.timezone);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       console.error(error);
@@ -117,10 +147,15 @@ export function NutritionScreen() {
   };
 
   const handleDeleteMeal = (id: string, name: string) => {
-    Alert.alert("Delete Meal", `Remove "${name}" from your log?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => { if (auth.currentUser) await deleteMealLog(auth.currentUser.uid, id); } },
-    ]);
+    ToastService.confirm({
+      title: "Delete this meal?",
+      message: `"${name}" will be removed from today's log.`,
+      confirmLabel: "Delete",
+      destructive: true,
+      onConfirm: async () => {
+        if (auth.currentUser) await deleteMealLog(auth.currentUser.uid, id);
+      },
+    });
   };
 
   const handleApplyCoachPlan = async (plan: PrescribedMeal) => {
@@ -136,7 +171,7 @@ export function NutritionScreen() {
 
   if (showIntake) {
     return (
-      <ScreenShell title="NUTRITION" subtitle="MEDICAL & LIFESTYLE INTAKE" contentStyle={styles.shellContent}>
+      <ScreenShell title="Nutrition" subtitle="Medical and lifestyle intake" contentStyle={styles.shellContent}>
         <NutritionIntakeForm onSave={handleSaveIntake} isSaving={isSavingIntake} />
       </ScreenShell>
     );
@@ -144,12 +179,12 @@ export function NutritionScreen() {
 
   return (
     <>
-      <ScreenShell title="NUTRITION" subtitle="TRACK YOUR MACROS" contentStyle={styles.shellContent}>
+      <ScreenShell title="Nutrition" subtitle="Track your macros" contentStyle={styles.shellContent}>
         {isLoading ? <View style={styles.loader}><ActivityIndicator color={colors.primary} /></View> : (
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
             
             {/* 1. NUTRITION SUMMARY */}
-            <View style={styles.summaryCard}>
+            <Surface style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
                 <View style={{ flex: 1 }}>
                   <Typography variant="label" color={colors.textMuted}>CALORIE INTAKE</Typography>
@@ -164,26 +199,34 @@ export function NutritionScreen() {
                 <MacroItem label="Carbs" current={totals.carbs} target={targets.carbs} color={colors.primary} icon="restaurant" />
                 <MacroItem label="Fats" current={totals.fats} target={targets.fats} color={colors.danger} icon="water" />
               </View>
-            </View>
+            </Surface>
 
             {/* 2. WATER TRACKER */}
             <WaterTracker />
 
             {/* 3. COACH PRESCRIPTION BANNER */}
-            {profile?.isPremium && prescribed.length > 0 && (
+            {(profile?.isPremium || profile?.assignmentStatus === "assigned") && visibleCoachPlan && (
               <View style={styles.coachBanner}>
                 <View style={styles.bannerHeader}>
                   <Ionicons name="sparkles" size={18} color={colors.primary} />
-                  <Typography variant="label" color={colors.primary} style={{ fontWeight: '900' }}>NEW COACH PRESCRIPTION</Typography>
+                  <Typography variant="label" color={colors.primary} style={{ fontWeight: '900' }}>
+                    {todayNutritionPlan.sourceType === "daily" ? "TODAY'S COACH PLAN" : "UNSCHEDULED COACH PLAN"}
+                  </Typography>
                 </View>
-                <Typography variant="h2" style={styles.bannerTitle}>{prescribed[0].title}</Typography>
+                <Typography variant="h2" style={styles.bannerTitle}>{visibleCoachPlan.title}</Typography>
                 <View style={styles.bannerMacros}>
-                  <MacroStat val={prescribed[0].macros.calories} label="KCALS" />
-                  <MacroStat val={prescribed[0].macros.protein} label="PRO" />
-                  <MacroStat val={prescribed[0].macros.carbs} label="CARBS" />
+                  <MacroStat val={visibleCoachPlan.macros.calories} label="KCALS" />
+                  <MacroStat val={visibleCoachPlan.macros.protein} label="PRO" />
+                  <MacroStat val={visibleCoachPlan.macros.carbs} label="CARBS" />
                 </View>
-                <Pressable style={styles.applyBtn} onPress={() => handleApplyCoachPlan(prescribed[0])} disabled={!!applyingPlanId}>
-                  {applyingPlanId === prescribed[0].id ? <ActivityIndicator size="small" color="#000" /> : <><Typography style={styles.applyBtnText}>APPLY TARGETS</Typography><Ionicons name="checkmark-circle" size={18} color="#000" /></>}
+                <Pressable
+                  style={styles.applyBtn}
+                  onPress={() => handleApplyCoachPlan(visibleCoachPlan)}
+                  disabled={!!applyingPlanId || visibleCoachPlan.isApplied === true}
+                >
+                  {applyingPlanId === visibleCoachPlan.id
+                    ? <ActivityIndicator size="small" color="#000" />
+                    : <><Typography style={styles.applyBtnText}>{visibleCoachPlan.isApplied ? "TARGETS APPLIED" : "APPLY TARGETS"}</Typography><Ionicons name="checkmark-circle" size={18} color="#000" /></>}
                 </Pressable>
               </View>
             )}
@@ -226,11 +269,11 @@ export function NutritionScreen() {
                     )}
                     <View style={styles.mealInfo}>
                       <Typography variant="h2" style={styles.mealName}>{meal.name}</Typography>
-                      <Typography variant="label" color={colors.textFaint} style={{ fontSize: 10 }}>{meal.time}</Typography>
+                      <Typography variant="label" color={colors.textFaint} style={{ fontSize: 11 }}>{meal.time}</Typography>
                     </View>
                     <View style={styles.mealStats}>
-                      <Typography variant="h2" style={styles.mealCalories}>{meal.calories} <Typography style={{ fontSize: 10, color: colors.textFaint }}>kcal</Typography></Typography>
-                      <Typography variant="label" color={colors.success} style={{ fontSize: 10, fontWeight: '900' }}>{meal.protein}g Protein</Typography>
+                      <Typography variant="h2" style={styles.mealCalories}>{meal.calories} <Typography style={{ fontSize: 11, color: colors.textFaint }}>kcal</Typography></Typography>
+                      <Typography variant="label" color={colors.success} style={{ fontSize: 11, fontWeight: '900' }}>{meal.protein}g Protein</Typography>
                     </View>
                   </Pressable>
                 ))
@@ -264,7 +307,8 @@ const styles = StyleSheet.create({
   loader: { flex: 1, alignItems: "center", justifyContent: "center" },
   scroll: { paddingBottom: 120, gap: spacing.lg },
   
-  summaryCard: { backgroundColor: colors.bgElevated, borderRadius: radius["2xl"], padding: spacing.xl, borderWidth: 1, borderColor: colors.borderStrong, gap: 24, marginTop: 10 },
+  // Geometry now comes from <Surface>; only the layout the card needs remains.
+  summaryCard: { gap: 24, marginTop: 10 },
   summaryHeader: { flexDirection: "row", alignItems: "center", gap: 20 },
   largeMetric: { fontSize: 32 },
   metricSub: { fontSize: 14, color: colors.textFaint },
@@ -276,7 +320,7 @@ const styles = StyleSheet.create({
   bannerMacros: { flexDirection: 'row', gap: 12, backgroundColor: colors.bgDark, padding: spacing.md, borderRadius: radius.md },
   bannerMacroItem: { flex: 1, alignItems: 'center' },
   macroValText: { fontSize: 16, fontWeight: '900', color: colors.primary },
-  macroLabelText: { fontSize: 8, color: colors.textFaint, fontWeight: '900' },
+  macroLabelText: { fontSize: 11, color: colors.textFaint, fontWeight: '900' },
   applyBtn: { height: 50, backgroundColor: colors.primary, borderRadius: radius.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 4 },
   applyBtnText: { color: colors.primaryText, fontWeight: '900', fontSize: 13 },
 
@@ -285,7 +329,7 @@ const styles = StyleSheet.create({
   logIconCircle: { width: 48, height: 48, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
 
   historySection: { gap: spacing.md },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginStart: 4 },
   emptyHistory: { height: 140, backgroundColor: colors.bgDark, borderRadius: radius["2xl"], alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderSubtle, borderStyle: 'dashed' },
   
   mealItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgElevated, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderStrong, gap: spacing.md },

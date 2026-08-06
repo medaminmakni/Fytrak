@@ -49,7 +49,7 @@ export function FoodSearchModal({
               <Typography variant="h2" style={styles.modalTitle}>
                 Find Food
               </Typography>
-              <Typography variant="label" color="#444">
+              <Typography variant="label" color={colors.textDim}>
                 INNTA Verified & Global DB
               </Typography>
             </View>
@@ -59,11 +59,11 @@ export function FoodSearchModal({
           </View>
 
           <View style={styles.searchBarWrapper}>
-            <Ionicons name="search" size={18} color="#666" style={styles.searchIcon} />
+            <Ionicons name="search" size={18} color={colors.iconFaint} style={styles.searchIcon} />
             <TextInput
               style={styles.input}
               placeholder="Search dishes or products..."
-              placeholderTextColor="#666"
+              placeholderTextColor={colors.textMuted}
               value={query}
               onChangeText={onQueryChange}
               autoFocus
@@ -77,14 +77,14 @@ export function FoodSearchModal({
             {results.length === 0 ? (
               trimmedQuery.length >= 2 ? (
                 <View style={styles.emptyResults}>
-                  <Typography variant="label" color="#444">
+                  <Typography variant="label" color={colors.textDim}>
                     No matches found in our database
                   </Typography>
                 </View>
               ) : (
                 <View style={styles.initialState}>
                   <Ionicons name="restaurant-outline" size={48} color="#1c1c1e" />
-                  <Typography variant="label" color="#444" style={{ marginTop: 12 }}>
+                  <Typography variant="label" color={colors.textDim} style={{ marginTop: 12 }}>
                     Type at least 2 characters to search
                   </Typography>
                 </View>
@@ -103,7 +103,7 @@ export function FoodSearchModal({
                       <Ionicons 
                         name="fast-food" 
                         size={18} 
-                        color={food.isVerified ? colors.primary : "#444"} 
+                        color={food.isVerified ? colors.primary : colors.textDim} 
                       />
                     </View>
                   )}
@@ -179,8 +179,8 @@ const styles = StyleSheet.create({
     borderColor: "#222",
     marginBottom: 20,
   },
-  searchIcon: { marginRight: 12 },
-  loader: { marginLeft: 12 },
+  searchIcon: { marginEnd: 12 },
+  loader: { marginStart: 12 },
   input: { 
     flex: 1, 
     color: "#fff", 
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     flexShrink: 1
   },
   modalItemSub: { 
-    color: "#666", 
+    color: colors.textMuted, 
     fontSize: 12, 
     fontWeight: "600" 
   },
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
   },
   verifiedText: { 
     color: "#000", 
-    fontSize: 9, 
+    fontSize: 11, 
     fontWeight: "900" 
   },
   addIconCircle: { 

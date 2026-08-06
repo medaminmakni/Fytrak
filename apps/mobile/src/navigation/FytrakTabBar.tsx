@@ -20,8 +20,12 @@ const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   CoachProfile: "person-outline",
 };
 
-const ACTIVE_CIRCLE_SIZE = 44;
-const TAB_BAR_HORIZONTAL_MARGIN = 48;
+const TAB_BAR_HORIZONTAL_MARGIN = 40;
+const BAR_HEIGHT = 68;
+/** Vertical inset of the active pill inside the bar, top and bottom. */
+const INDICATOR_INSET = 6;
+/** Horizontal gap between the active pill and its neighbours. */
+const INDICATOR_GAP = 4;
 
 const labelByRoute: Record<string, string> = {
   Home: "Today",
@@ -44,9 +48,15 @@ type FytrakTabBarProps = {
     };
     navigate: (name: string) => void;
   };
+  /**
+   * Unread counts keyed by route name. A route absent from this map, or mapped
+   * to 0, renders no badge — the badge is never decorative, it only appears
+   * when a real count is passed in.
+   */
+  badges?: Record<string, number>;
 };
 
-export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
+export function FytrakTabBar({ state, navigation, badges }: FytrakTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = Dimensions.get("window");
   const barWidth = width - TAB_BAR_HORIZONTAL_MARGIN;
@@ -111,13 +121,17 @@ export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
 
           const iconName = iconByRoute[route.name] ?? "ellipse-outline";
           const activeIconName = iconName.replace("-outline", "") as keyof typeof Ionicons.glyphMap;
+          const label = labelByRoute[route.name] ?? route.name;
+          const badgeCount = badges?.[route.name] ?? 0;
 
           return (
             <Pressable
               key={route.key}
               onPress={onPress}
               accessibilityRole="tab"
-              accessibilityLabel={`${route.name} tab`}
+              accessibilityLabel={
+                badgeCount > 0 ? `${label} tab, ${badgeCount} unread` : `${label} tab`
+              }
               accessibilityState={{ selected: isFocused }}
               style={styles.tabButton}
               hitSlop={8}
@@ -125,12 +139,22 @@ export function FytrakTabBar({ state, navigation }: FytrakTabBarProps) {
               <View style={styles.iconSlot}>
                 <AnimatedIcon
                   name={isFocused ? activeIconName : iconName}
-                  color={isFocused ? colors.primary : "#8c8c8c"}
+                  color={isFocused ? colors.primary : colors.textMuted}
                   size={22}
                 />
+                {badgeCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText} numberOfLines={1}>
+                      {badgeCount > 9 ? "9+" : badgeCount}
+                    </Text>
+                  </View>
+                )}
               </View>
-              <Text style={[styles.tabLabel, isFocused && styles.tabLabelActive]}>
-                {labelByRoute[route.name] ?? route.name}
+              <Text
+                numberOfLines={1}
+                style={[styles.tabLabel, isFocused && styles.tabLabelActive]}
+              >
+                {label}
               </Text>
             </Pressable>
           );
@@ -177,11 +201,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   bar: {
-    height: 68,
+    height: BAR_HEIGHT,
     backgroundColor: colors.surface,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    borderColor: colors.borderSubtle,
+    // A rounded rect, not a pill: at this height a pill radius bows the ends in
+    // past the outer tabs and crowds their labels.
+    borderRadius: radius.card,
+    // Borderless. The surface is two steps lighter than the page background,
+    // which separates the bar on its own; an outline on top of that reads as a
+    // second, competing edge next to the active pill's.
     flexDirection: "row",
     alignItems: "center",
     shadowColor: "#000",
@@ -192,51 +219,65 @@ const styles = StyleSheet.create({
   },
   indicator: {
     position: "absolute",
-    top: 5,
-    alignItems: "center",
+    top: INDICATOR_INSET,
+    bottom: INDICATOR_INSET,
   },
+  /*
+   * The active state is a tinted panel behind the whole tab — icon *and* label —
+   * rather than a circle behind the icon alone. It makes the selected tab read
+   * as one unit and gives the label a reason to be yellow.
+   */
   indicatorBubble: {
-    width: ACTIVE_CIRCLE_SIZE,
-    height: ACTIVE_CIRCLE_SIZE,
-    borderRadius: radius.pill,
-    backgroundColor: "#0b0b0b",
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.26,
-    shadowRadius: 10,
-    elevation: 10,
+    flex: 1,
+    marginHorizontal: INDICATOR_GAP,
+    borderRadius: radius.nested,
+    backgroundColor: colors.primaryMuted,
   },
   tabButton: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "flex-start",
+    justifyContent: "center",
     height: "100%",
     minWidth: 44,
     zIndex: 1,
-    paddingTop: 5,
-    paddingBottom: 9,
+    gap: 4,
   },
   iconSlot: {
-    width: ACTIVE_CIRCLE_SIZE,
-    height: ACTIVE_CIRCLE_SIZE,
+    // Sized to the glyph, not to a 44px circle. The Pressable already spans the
+    // full bar height, so the touch target is unaffected.
+    height: 22,
     alignItems: "center",
     justifyContent: "center",
   },
+  badge: {
+    position: "absolute",
+    top: -6,
+    left: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeText: {
+    color: colors.primaryText,
+    fontSize: 10,
+    fontWeight: "900",
+    lineHeight: 13,
+  },
   tabLabel: {
-    color: "#8c8c8c",
-    fontSize: 9,
-    fontWeight: "800",
-    lineHeight: 11,
-    marginTop: 0,
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "700",
+    lineHeight: 14,
     textAlign: "center",
     width: "100%",
   },
   tabLabelActive: {
     color: colors.primary,
+    fontWeight: "800",
   },
 });
 

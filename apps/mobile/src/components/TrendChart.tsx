@@ -32,7 +32,7 @@ export function TrendChart({
   if (!data || data.length === 0) {
     return (
       <View style={[styles.empty, { height }]}>
-        <Typography variant="label" color="#444">{emptyLabel}</Typography>
+        <Typography variant="label" color={colors.textDim}>{emptyLabel}</Typography>
       </View>
     );
   }
@@ -136,12 +136,12 @@ export function TrendChart({
 const styles = StyleSheet.create({
   container: {
     marginTop: 10,
-    marginLeft: -15,
+    marginStart: -15,
     alignItems: "center",
   },
   axisText: {
     color: "rgba(255,255,255,0.3)",
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "700",
   },
   empty: {

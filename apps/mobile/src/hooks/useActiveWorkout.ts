@@ -1,7 +1,6 @@
+import { ToastService } from "../components/Toast";
 import { useState, useRef, useEffect, useCallback } from "react";
 import * as Haptics from "expo-haptics";
-import { Alert } from "react-native";
-import { ToastService } from "../components/Toast";
 import { auth } from "../config/firebase";
 import {
   clearActiveWorkoutDraft,
@@ -20,6 +19,7 @@ import { trackEvent } from "../services/analytics";
 import type { PrescribedWorkout, WorkoutLog, WorkoutSet, WorkoutSetType } from "../services/userSession";
 import type { ExerciseLibraryItem } from "../constants/exercises";
 import { t as tEx } from "../constants/exercises";
+import type { ProgramSession } from "../services/programService";
 
 type ExerciseLog = ActiveWorkoutExerciseDraft;
 
@@ -53,31 +53,24 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
       hasLoadedDraftRef.current = true;
       if (!draft || !hasMeaningfulWorkoutDraft(draft)) return;
 
-      Alert.alert(
-        "Resume Workout?",
-        "You have an unfinished workout saved on this device.",
-        [
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => void clearActiveWorkoutDraft(user.uid),
-          },
-          {
-            text: "Resume",
-            onPress: () => {
-              const ageMinutes = Math.max(0, Math.round((Date.now() - new Date(draft.updatedAt).getTime()) / 60000));
-              trackEvent("active_workout_resumed", {
-                exerciseCount: draft.exercises.length,
-                ageMinutes,
-              });
-              setWorkoutName(draft.workoutName);
-              setActivePrescriptionId(draft.activePrescriptionId);
-              setWorkoutStartedAt(draft.startedAt);
-              setExercises(draft.exercises.length > 0 ? draft.exercises : []);
-            },
-          },
-        ]
-      );
+      ToastService.confirm({
+        title: "Resume your workout?",
+        message: "You have an unfinished session saved on this device.",
+        confirmLabel: "Resume",
+        cancelLabel: "Discard",
+        onCancel: () => void clearActiveWorkoutDraft(user.uid),
+        onConfirm: () => {
+          const ageMinutes = Math.max(0, Math.round((Date.now() - new Date(draft.updatedAt).getTime()) / 60000));
+          trackEvent("active_workout_resumed", {
+            exerciseCount: draft.exercises.length,
+            ageMinutes,
+          });
+          setWorkoutName(draft.workoutName);
+          setActivePrescriptionId(draft.activePrescriptionId);
+          setWorkoutStartedAt(draft.startedAt);
+          setExercises(draft.exercises.length > 0 ? draft.exercises : []);
+        },
+      });
     });
 
     return () => {
@@ -111,22 +104,32 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
   }, [activePrescriptionId, exercises, workoutName, workoutStartedAt]);
 
   // TIMER LOGIC
+  // Deliberately depends on `timerActive` only. Including `restTimeLeft` here
+  // (as it previously did) tore down and re-created the interval on every tick,
+  // restarting the 1000ms clock after each render commit and accumulating
+  // drift. The functional updater below already sees the latest value, so the
+  // interval can be created once per active period.
   useEffect(() => {
-    if (timerActive && restTimeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setRestTimeLeft(prev => {
-          if (prev <= 1) {
-            setTimerActive(false);
-            if (timerRef.current) clearInterval(timerRef.current);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [timerActive, restTimeLeft]);
+    if (!timerActive) return;
+
+    timerRef.current = setInterval(() => {
+      setRestTimeLeft(prev => {
+        if (prev <= 1) {
+          setTimerActive(false);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [timerActive]);
 
   // WORKOUT ACTIONS
   const initFromPrescribed = useCallback((p: PrescribedWorkout) => {
@@ -148,39 +151,71 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
     }));
   }, []);
 
+  const initFromProgramSession = useCallback((session: ProgramSession) => {
+    setWorkoutName(session.title);
+    setActivePrescriptionId(null);
+    setWorkoutStartedAt(new Date().toISOString());
+    setExercises(session.exercises.map((exercise) => ({
+      name: exercise.name,
+      type: exercise.suggestedSets[0]?.type ?? "WEIGHT_REPS",
+      sets: (exercise.suggestedSets.length > 0
+        ? exercise.suggestedSets
+        : [{ type: "WEIGHT_REPS" as WorkoutSetType }]
+      ).map((set) => ({
+        type: set.type,
+        reps: set.targetReps,
+        weight: set.targetWeight,
+        durationSec: set.targetDurationSec,
+        isCompleted: false,
+      })),
+    })));
+  }, []);
+
   const addExerciseCard = useCallback(() => {
     setExercises((current) => [...current, createEmptyWorkoutExercise()]);
   }, []);
 
   const toggleSet = useCallback((exIdx: number, sIdx: number) => {
-    setExercises(current => {
-      const newEx = [...current];
-      const wasCompleted = newEx[exIdx].sets[sIdx].isCompleted;
-      newEx[exIdx].sets[sIdx].isCompleted = !wasCompleted;
-      
-      if (!wasCompleted) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        setRestTimeLeft(60); 
-        setTimerActive(true);
-        const completedSet = newEx[exIdx].sets[sIdx];
-        const estimatedMax = estimateOneRepMax(completedSet);
-        const previousBest = getBestEstimatedOneRepMaxForExercise(newEx[exIdx].name, workouts);
+    const exercise = exercises[exIdx];
+    const set = exercise?.sets[sIdx];
+    if (!exercise || !set) return;
 
-        if (estimatedMax > 0 && estimatedMax > previousBest + 0.5) {
-          ToastService.success(
-            "Potential PR",
-            `${Math.round(estimatedMax)}kg estimated 1RM on ${newEx[exIdx].name || "this exercise"}.`
-          );
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        }
-      } else {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        setTimerActive(false); 
-        setRestTimeLeft(0);
+    const willComplete = !set.isCompleted;
+    const updatedSet = { ...set, isCompleted: willComplete };
+
+    // Keep React state updaters pure. Toast and timer updates below target
+    // other components and must not run while React evaluates this update.
+    setExercises((current) => current.map((currentExercise, exerciseIndex) => (
+      exerciseIndex === exIdx
+        ? {
+            ...currentExercise,
+            sets: currentExercise.sets.map((currentSet, setIndex) => (
+              setIndex === sIdx ? updatedSet : currentSet
+            )),
+          }
+        : currentExercise
+    )));
+
+    if (willComplete) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setRestTimeLeft(60);
+      setTimerActive(true);
+
+      const estimatedMax = estimateOneRepMax(updatedSet);
+      const previousBest = getBestEstimatedOneRepMaxForExercise(exercise.name, workouts);
+      if (estimatedMax > 0 && estimatedMax > previousBest + 0.5) {
+        ToastService.success(
+          "Potential PR",
+          `${Math.round(estimatedMax)}kg estimated 1RM on ${exercise.name || "this exercise"}.`
+        );
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-      return newEx;
-    });
-  }, [workouts]);
+    } else {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setTimerActive(false);
+      setRestTimeLeft(0);
+    }
+  }, [exercises, workouts]);
 
   const updateSet = useCallback((exIdx: number, sIdx: number, field: keyof WorkoutSet, value: any) => {
     setExercises((current) => {
@@ -276,6 +311,7 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
     restTimeLeft, setRestTimeLeft,
     timerActive, setTimerActive,
     initFromPrescribed,
+    initFromProgramSession,
     addExerciseCard,
     toggleSet,
     updateSet,

@@ -1,3 +1,4 @@
+import { ToastService } from "../../components/Toast";
 import {
     StyleSheet,
     Text,
@@ -5,7 +6,6 @@ import {
     ScrollView,
     TextInput,
     Pressable,
-    Alert,
     ActivityIndicator,
     KeyboardAvoidingView,
     Platform
@@ -24,11 +24,13 @@ import { Typography } from "../../components/Typography";
 export function PrescribeWorkoutScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { traineeId, traineeName } = route.params;
+    const { traineeId = "", traineeName = "" } = route.params ?? {};
 
     const {
         title,
         setTitle,
+        scheduledDate,
+        setScheduledDate,
         exercises,
         templates,
         libModalVisible,
@@ -61,7 +63,7 @@ export function PrescribeWorkoutScreen() {
 
     return (
         <ScreenShell
-            title="PRESCRIBE"
+            title="Prescribe a workout"
             subtitle={`NEW ROUTINE FOR ${traineeName?.toUpperCase()}`}
             contentStyle={styles.shellContent}
         >
@@ -75,15 +77,15 @@ export function PrescribeWorkoutScreen() {
                     {/* LIBRARY SHORTCUT */}
                     <Pressable
                         style={styles.card}
-                        onPress={() => templates.length > 0 ? setLibModalVisible(true) : Alert.alert("Library Empty", "Save a template first.")}
+                        onPress={() => templates.length > 0 ? setLibModalVisible(true) : ToastService.error("Library Empty", "Save a template first.")}
                     >
                         <View style={styles.cardHeader}>
                             <Ionicons name="library" size={18} color={colors.primary} />
                             <Typography variant="h2">Load from Library</Typography>
                         </View>
                         <View style={styles.libContent}>
-                            <Typography variant="bodySmall" color="#8c8c8c">{templates.length} saved routines available in your coach cloud.</Typography>
-                            <Ionicons name="chevron-forward" size={16} color="#444" />
+                            <Typography variant="bodySmall" color={colors.textMuted}>{templates.length} saved routines available in your coach cloud.</Typography>
+                            <Ionicons name="chevron-forward" size={16} color={colors.iconFaint} />
                         </View>
                     </Pressable>
 
@@ -94,14 +96,34 @@ export function PrescribeWorkoutScreen() {
                             <Typography variant="h2">Workout Details</Typography>
                         </View>
                         <View style={styles.inputGroup}>
-                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>ROUTINE TITLE</Typography>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>ROUTINE TITLE</Typography>
                             <TextInput
                                 placeholder="e.g. Upper Body Power"
-                                placeholderTextColor="#444"
+                                placeholderTextColor={colors.textDim}
                                 style={styles.textInput}
                                 value={title}
                                 onChangeText={setTitle}
                             />
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>
+                                SCHEDULE FOR (OPTIONAL)
+                            </Typography>
+                            <TextInput
+                                placeholder="YYYY-MM-DD"
+                                placeholderTextColor={colors.textDim}
+                                style={styles.textInput}
+                                value={scheduledDate}
+                                onChangeText={setScheduledDate}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                keyboardType="numbers-and-punctuation"
+                            />
+                            <Typography variant="label" color={colors.textDim} style={{ fontSize: 11 }}>
+                                {scheduledDate.trim()
+                                    ? `Scheduled for ${scheduledDate.trim()} — this takes priority over the program that day.`
+                                    : "Unscheduled — shown in your client's plan list, not tied to a day."}
+                            </Typography>
                         </View>
                     </View>
 
@@ -147,7 +169,7 @@ export function PrescribeWorkoutScreen() {
 
                                 <View style={styles.exParams}>
                                     <View style={styles.paramBox}>
-                                        <Typography variant="label" color="#444" style={styles.paramLabel}>SETS</Typography>
+                                        <Typography variant="label" color={colors.textDim} style={styles.paramLabel}>SETS</Typography>
                                         <TextInput
                                             keyboardType="numeric"
                                             style={styles.paramInput}
@@ -156,7 +178,7 @@ export function PrescribeWorkoutScreen() {
                                         />
                                     </View>
                                     <View style={styles.paramBox}>
-                                        <Typography variant="label" color="#444" style={styles.paramLabel}>{ex.type === "TIME" ? "SEC" : "REPS"}</Typography>
+                                        <Typography variant="label" color={colors.textDim} style={styles.paramLabel}>{ex.type === "TIME" ? "SEC" : "REPS"}</Typography>
                                         <TextInput
                                             style={styles.paramInput}
                                             value={ex.targetReps}
@@ -166,7 +188,7 @@ export function PrescribeWorkoutScreen() {
                                         />
                                     </View>
                                     <View style={styles.paramBox}>
-                                        <Typography variant="label" color="#444" style={styles.paramLabel}>REST</Typography>
+                                        <Typography variant="label" color={colors.textDim} style={styles.paramLabel}>REST</Typography>
                                         <TextInput
                                             style={styles.paramInput}
                                             value={ex.restTime}
@@ -191,10 +213,10 @@ export function PrescribeWorkoutScreen() {
                         onPress={() => setSaveAsTemplate(!saveAsTemplate)}
                     >
                         <View style={styles.templateRow}>
-                            <Ionicons name={saveAsTemplate ? "checkbox" : "square-outline"} size={22} color={saveAsTemplate ? colors.primary : "#444"} />
+                            <Ionicons name={saveAsTemplate ? "checkbox" : "square-outline"} size={22} color={saveAsTemplate ? colors.primary : colors.iconFaint} />
                             <View style={{ flex: 1 }}>
                                 <Typography variant="h2" style={{ fontSize: 15 }}>Save to Library</Typography>
-                                <Typography variant="label" color="#8c8c8c">Sync this routine to your coach templates.</Typography>
+                                <Typography variant="label" color={colors.textMuted}>Sync this routine to your coach templates.</Typography>
                             </View>
                         </View>
                     </Pressable>
@@ -287,7 +309,7 @@ const styles = StyleSheet.create({
 
     exParams: { flexDirection: 'row', gap: 10 },
     paramBox: { flex: 1, gap: 4 },
-    paramLabel: { textAlign: 'center', fontSize: 8, fontWeight: '900' },
+    paramLabel: { textAlign: 'center', fontSize: 11, fontWeight: '900' },
     paramInput: { backgroundColor: '#161616', borderRadius: 10, paddingVertical: 10, textAlign: 'center', color: colors.primary, fontSize: 16, fontWeight: '900', borderWidth: 1, borderColor: '#2c2c2e' },
 
     addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8, borderStyle: 'dashed', borderWidth: 1, borderColor: '#2c2c2e', borderRadius: 16 },

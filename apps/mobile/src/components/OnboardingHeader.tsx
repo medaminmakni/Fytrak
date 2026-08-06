@@ -38,7 +38,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#161616',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 20,
+    marginEnd: 20,
   },
   progressContainer: {
     flex: 1,

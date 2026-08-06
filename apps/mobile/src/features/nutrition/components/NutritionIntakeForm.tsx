@@ -50,7 +50,7 @@ export function NutritionIntakeForm({ onSave, isSaving }: NutritionIntakeFormPro
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.formCard}>
-        <SectionTitle title="LIFESTYLE" icon="body" />
+        <SectionTitle title="Lifestyle" icon="body" />
         <Text style={styles.label}>Daily Activity Level</Text>
         <View style={styles.groupRow}>
           {["Sedentary", "Moderate", "Active"].map(l => (
@@ -64,7 +64,7 @@ export function NutritionIntakeForm({ onSave, isSaving }: NutritionIntakeFormPro
           <MetricStepper label="Sleep (hrs)" value={sleep} onAdjust={(d) => setSleep(Math.max(2, sleep + d))} />
         </View>
 
-        <SectionTitle title="MEDICAL" icon="medkit" />
+        <SectionTitle title="Medical" icon="medkit" />
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Food Allergies</Text>
           <TextInput style={styles.input} placeholderTextColor={colors.textFaint} value={allergies} onChangeText={setAllergies} />
@@ -90,7 +90,7 @@ export function NutritionIntakeForm({ onSave, isSaving }: NutritionIntakeFormPro
           {showWakeUpPicker && <DateTimePicker value={wakeUpTime} mode="time" display="spinner" onChange={(_, d) => { setShowWakeUpPicker(false); if (d) setWakeUpTime(d); }} />}
         </View>
 
-        <SectionTitle title="HABITS" icon="cafe" />
+        <SectionTitle title="Habits" icon="cafe" />
         <View style={styles.row}>
           <Pressable style={[styles.pill, smoker && styles.pillActive]} onPress={() => setSmoker(!smoker)}>
             <Text style={[styles.pillText, smoker && styles.pillTextActive]}>{smoker ? "SMOKER: YES" : "SMOKER: NO"}</Text>
@@ -98,7 +98,7 @@ export function NutritionIntakeForm({ onSave, isSaving }: NutritionIntakeFormPro
           {smoker && <MetricStepper label="Cigs / Day" value={cigs} onAdjust={(d) => setCigs(Math.max(1, cigs + d))} />}
         </View>
 
-        <SectionTitle title="PREFERENCES" icon="restaurant" />
+        <SectionTitle title="Preferences" icon="restaurant" />
         <View style={styles.inputGroup}>
           <TextInput style={styles.input} placeholder="Favorite dishes or preferences..." placeholderTextColor={colors.textFaint} value={dishes} onChangeText={setDishes} />
         </View>
@@ -119,12 +119,12 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: spacing.md, alignItems: "center" },
   pill: { flex: 1, height: 44, borderRadius: radius.md, backgroundColor: colors.surfaceMuted, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.borderSubtle },
   pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pillText: { color: colors.textSecondary, fontSize: 10, fontWeight: "900" },
+  pillText: { color: colors.textSecondary, fontSize: 11, fontWeight: "900" },
   pillTextActive: { color: colors.primaryText },
   inputGroup: { gap: spacing.xxs },
   input: { height: 56, backgroundColor: colors.bgDark, borderRadius: radius.md, paddingHorizontal: spacing.lg, justifyContent: "center", borderWidth: 1, borderColor: colors.borderSubtle, color: colors.text },
   timeText: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  miniLabel: { color: colors.textFaint, fontSize: 8, fontWeight: "900", marginTop: 2 },
+  miniLabel: { color: colors.textFaint, fontSize: 11, fontWeight: "900", marginTop: 2 },
   saveBtn: { height: 60, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", marginTop: spacing.lg },
   saveBtnText: { color: colors.primaryText, fontSize: 14, fontWeight: "900" },
 });

@@ -1,7 +1,6 @@
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useState } from "react";
-import { CompleteProfileScreen } from "../screens/auth/CompleteProfileScreen";
 import { CoachCompleteProfileScreen } from "../screens/coach/CoachCompleteProfileScreen";
 import { LoginScreen } from "../screens/auth/LoginScreen";
 import { SignUpScreen } from "../screens/auth/SignUpScreen";
@@ -11,8 +10,8 @@ import { PrescribeMealScreen } from "../screens/coach/PrescribeMealScreen";
 import { TemplateDetailScreen } from "../screens/coach/TemplateDetailScreen";
 import {
   loginWithEmailPassword,
-  signInWithFacebookAccessToken,
-  signInWithGoogleIdToken,
+  signInWithFacebook,
+  signInWithGoogle,
   signUpWithEmailPassword,
 } from "../services/auth";
 import { CoachAssignmentScreen } from "../screens/trainee/CoachAssignmentScreen";
@@ -34,6 +33,7 @@ import {
   saveCoachProfile,
 } from "../services/userSession";
 import { calculateNutritionPlan } from '../utils/calculators';
+import { useTimezoneCapture } from "../hooks/useTimezoneCapture";
 import { OnboardingFlow } from "../screens/onboarding/OnboardingFlow";
 import { useSessionState } from "../hooks/useSessionState";
 import type { RootStackParamList } from "./types";
@@ -43,7 +43,10 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const { session, isBootstrapping } = useSessionState();
   const [isSplashFinished, setIsSplashFinished] = useState(false);
-  const [showWelcome, setShowWelcome] = useState(true);
+
+  // Records each account's IANA timezone once. Trainee logs use it as their
+  // stable calendar boundary; coach timezone is retained for future scheduling.
+  useTimezoneCapture();
 
   const handleAuthSuccess = async (initialRole?: "trainee" | "coach") => {
     const user = auth.currentUser;
@@ -66,43 +69,58 @@ export function RootNavigator() {
         {!session.isAuthenticated ? (
           /* AUTHENTICATION FLOW */
           <>
-            {showWelcome && (
-              <Stack.Screen name="Welcome" options={{ animation: 'fade' }}>
-                {() => <WelcomeScreen onStart={() => setShowWelcome(false)} />}
-              </Stack.Screen>
-            )}
+            {/*
+              * Welcome navigates rather than unmounting itself. Keeping it in
+              * the stack means Back from SignUp or Login returns here instead
+              * of trapping the user in whichever form they picked.
+              *
+              * The role is decided by which button was pressed and travels as a
+              * route param, so SignUp no longer has to ask.
+              */}
+            <Stack.Screen name="Welcome" options={{ animation: 'fade' }}>
+              {({ navigation }) => (
+                <WelcomeScreen
+                  onStart={() => navigation.navigate("SignUp", { role: "trainee" })}
+                  onSignIn={() => navigation.navigate("Login")}
+                  onCoachStart={() => navigation.navigate("SignUp", { role: "coach" })}
+                />
+              )}
+            </Stack.Screen>
             <Stack.Screen name="Login">
               {() => (
                 <LoginScreen
                   onLogin={async ({ email, password }) => {
                     await loginWithEmailPassword(email, password);
-                    handleAuthSuccess();
+                    await handleAuthSuccess();
                   }}
-                  onGoogleLogin={async (idToken) => {
-                    await signInWithGoogleIdToken(idToken);
-                    handleAuthSuccess();
+                  onGoogleLogin={async () => {
+                    await signInWithGoogle();
+                    await handleAuthSuccess();
                   }}
-                  onFacebookLogin={async (accessToken) => {
-                    await signInWithFacebookAccessToken(accessToken);
-                    handleAuthSuccess();
+                  onFacebookLogin={async () => {
+                    await signInWithFacebook();
+                    await handleAuthSuccess();
                   }}
                 />
               )}
             </Stack.Screen>
             <Stack.Screen name="SignUp">
-              {() => (
+              {({ route }) => (
                 <SignUpScreen
+                  // Reached from Login's "Create an account" link there is no
+                  // param; a trainee is the overwhelmingly common case.
+                  role={route.params?.role ?? "trainee"}
                   onSignUp={async ({ name, email, password, role }) => {
                     await signUpWithEmailPassword(name, email, password, role);
-                    handleAuthSuccess(role);
+                    await handleAuthSuccess(role);
                   }}
-                  onGoogleLogin={async (idToken, role) => {
-                    await signInWithGoogleIdToken(idToken);
-                    handleAuthSuccess(role);
+                  onGoogleLogin={async (role) => {
+                    await signInWithGoogle();
+                    await handleAuthSuccess(role);
                   }}
-                  onFacebookLogin={async (accessToken, role) => {
-                    await signInWithFacebookAccessToken(accessToken);
-                    handleAuthSuccess(role);
+                  onFacebookLogin={async (role) => {
+                    await signInWithFacebook();
+                    await handleAuthSuccess(role);
                   }}
                 />
               )}
@@ -196,6 +214,7 @@ export function RootNavigator() {
                   coachId={route.params.coachId}
                   traineeId={route.params.traineeId}
                   traineeName={route.params.traineeName}
+                  threadId={route.params.threadId}
                 />
               )}
             </Stack.Screen>

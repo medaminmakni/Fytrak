@@ -15,9 +15,19 @@ interface WorkoutSetRowProps {
 
 export function WorkoutSetRow({ set, sIdx, type, onUpdateSet, onToggleSet }: WorkoutSetRowProps) {
   const handleToggle = () => {
-    if (!set.isCompleted && type === "WEIGHT_REPS" && (!set.reps || !set.weight)) {
-      ToastService.info("Missing Data", "Please enter weight and reps.");
-      return;
+    if (!set.isCompleted) {
+      if (type === "WEIGHT_REPS" && (!set.reps || !set.weight)) {
+        ToastService.info("Missing Data", "Please enter weight and reps.");
+        return;
+      }
+      if (type === "TIME" && !set.durationSec) {
+        ToastService.info("Missing Data", "Please enter a duration.");
+        return;
+      }
+      if ((type === "BODYWEIGHT" || type === "REPS_ONLY") && !set.reps) {
+        ToastService.info("Missing Data", "Please enter reps.");
+        return;
+      }
     }
     onToggleSet();
   };
@@ -32,7 +42,7 @@ export function WorkoutSetRow({ set, sIdx, type, onUpdateSet, onToggleSet }: Wor
           value={set.durationSec?.toString()}
           keyboardType="number-pad"
           placeholder="-"
-          placeholderTextColor="#444"
+          placeholderTextColor={colors.textDim}
           onChangeText={(v) => onUpdateSet("durationSec", Number(v))}
           editable={!set.isCompleted}
         />
@@ -42,7 +52,7 @@ export function WorkoutSetRow({ set, sIdx, type, onUpdateSet, onToggleSet }: Wor
           value={set.reps?.toString()}
           keyboardType="number-pad"
           placeholder="-"
-          placeholderTextColor="#444"
+          placeholderTextColor={colors.textDim}
           onChangeText={(v) => onUpdateSet("reps", Number(v))}
           editable={!set.isCompleted}
         />
@@ -53,7 +63,7 @@ export function WorkoutSetRow({ set, sIdx, type, onUpdateSet, onToggleSet }: Wor
             value={set.weight?.toString()}
             keyboardType="decimal-pad"
             placeholder="-"
-            placeholderTextColor="#444"
+            placeholderTextColor={colors.textDim}
             onChangeText={(v) => onUpdateSet("weight", Number(v))}
             editable={!set.isCompleted}
           />
@@ -62,7 +72,7 @@ export function WorkoutSetRow({ set, sIdx, type, onUpdateSet, onToggleSet }: Wor
             value={set.reps?.toString()}
             keyboardType="number-pad"
             placeholder="-"
-            placeholderTextColor="#444"
+            placeholderTextColor={colors.textDim}
             onChangeText={(v) => onUpdateSet("reps", Number(v))}
             editable={!set.isCompleted}
           />
@@ -90,7 +100,7 @@ export function WorkoutSetRow({ set, sIdx, type, onUpdateSet, onToggleSet }: Wor
 const styles = StyleSheet.create({
   setRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 16, padding: 8, marginBottom: 8, gap: 8 },
   setRowCompleted: { backgroundColor: colors.primary + "10", borderColor: colors.primary + "30", borderWidth: 1 },
-  setText: { color: "#8c8c8c", fontSize: 14, fontWeight: "800", textAlign: "center" },
+  setText: { color: colors.textMuted, fontSize: 14, fontWeight: "800", textAlign: "center" },
   setInput: { flex: 1, backgroundColor: "#111", borderRadius: 10, height: 44, color: "#fff", fontSize: 16, fontWeight: "700", textAlign: "center" },
   checkBtn: { flex: 0.5, height: 44, alignItems: "center", justifyContent: "center" },
 });

@@ -59,7 +59,7 @@ export function CoachCompleteProfileScreen({ onComplete }: CoachCompleteProfileS
 
     return (
         <ScreenShell
-            title="Professional Setup"
+            title="Professional setup"
             subtitle="Define your coaching profile to attract trainees"
             contentStyle={styles.shellContent}
         >
@@ -75,7 +75,7 @@ export function CoachCompleteProfileScreen({ onComplete }: CoachCompleteProfileS
                                 multiline
                                 numberOfLines={4}
                                 placeholder="Tell potential trainees about your philosophy, background and how you can help them..."
-                                placeholderTextColor="#666"
+                                placeholderTextColor={colors.textMuted}
                                 style={[styles.input, styles.textArea]}
                                 value={bio}
                                 onChangeText={setBio}
@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
         color: "#ffffff",
         fontSize: 16,
         fontWeight: "700",
-        marginLeft: 2,
+        marginStart: 2,
     },
     input: {
         backgroundColor: "#1c1c1e",
@@ -223,8 +223,8 @@ const styles = StyleSheet.create({
         fontWeight: "900",
     },
     experienceUnit: {
-        color: "#666",
-        fontSize: 10,
+        color: colors.textMuted,
+        fontSize: 11,
         fontWeight: "800",
         marginTop: -4,
     },
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#22251a",
     },
     specialtyText: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontWeight: "700",
         fontSize: 13,
     },
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
     },
     infoText: {
         flex: 1,
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 13,
         fontWeight: "500",
         lineHeight: 18,

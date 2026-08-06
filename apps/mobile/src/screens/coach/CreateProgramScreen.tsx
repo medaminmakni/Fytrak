@@ -1,11 +1,13 @@
+import { ToastService } from "../../components/Toast";
 import React, { useMemo, useState } from "react";
-import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions } from "react-native";
+import { View, Text, StyleSheet, TextInput, ScrollView, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { saveProgram, ProgramWeek, ProgramSession } from "../../services/userSession";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { auth } from "../../config/firebase";
+import { parseDayOffsetInput, parseScheduleDateInput } from "../../features/plans/scheduleInput";
 import { Typography } from "../../components/Typography";
 
 const { width } = Dimensions.get("window");
@@ -13,9 +15,14 @@ const { width } = Dimensions.get("window");
 export function CreateProgramScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { traineeId, traineeName } = route.params;
+    // Guarded: the app registers a `fytrak://` deep-link scheme and React
+    // Navigation restores persisted state, so this screen can be entered with
+    // no params — destructuring directly would throw an uncatchable TypeError.
+    const { traineeId = "", traineeName = "" } = route.params ?? {};
 
     const [title, setTitle] = useState("");
+    // Blank = unscheduled program, matching every pre-Phase-D document.
+    const [startDate, setStartDate] = useState("");
     const [description, setDescription] = useState("");
     const [level, setLevel] = useState<"BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT">("INTERMEDIATE");
     const [durationWeeks, setDurationWeeks] = useState("4");
@@ -29,11 +36,11 @@ export function CreateProgramScreen() {
 
     const generateOutline = () => {
         if (weeksNum < 1 || weeksNum > 16) {
-            Alert.alert("Invalid Input", "Duration must be between 1 and 16 weeks.");
+            ToastService.error("Invalid Input", "Duration must be between 1 and 16 weeks.");
             return;
         }
         if (sessionsNum < 1 || sessionsNum > 7) {
-            Alert.alert("Invalid Input", "Sessions per week must be between 1 and 7.");
+            ToastService.error("Invalid Input", "Sessions per week must be between 1 and 7.");
             return;
         }
 
@@ -119,6 +126,26 @@ export function CreateProgramScreen() {
         );
     };
 
+    /**
+     * Sets a session's explicit day offset from the program start.
+     * 0 is the start day. Blank clears it, leaving the session unscheduled.
+     */
+    const updateSessionDayOffset = (weekId: string, sessionId: string, raw: string) => {
+        const parsed = parseDayOffsetInput(raw);
+        if (!parsed.ok) return; // reject the keystroke rather than store garbage
+        setWeeks((prev) =>
+            prev.map((week) => {
+                if (week.id !== weekId) return week;
+                return {
+                    ...week,
+                    sessions: week.sessions.map((session) =>
+                        session.id === sessionId ? { ...session, dayOffset: parsed.dayOffset } : session
+                    ),
+                };
+            })
+        );
+    };
+
     const removeSessionFromWeek = (weekId: string, sessionId: string) => {
         setWeeks((prev) =>
             prev.map((week) => {
@@ -131,12 +158,20 @@ export function CreateProgramScreen() {
 
     const handleAssignProgram = async () => {
         if (!title.trim() || !durationWeeks || !sessionsPerWeek) {
-            Alert.alert("Missing Fields", "Please provide a title, duration, and sessions per week.");
+            ToastService.error("Missing Fields", "Please provide a title, duration, and sessions per week.");
             return;
         }
 
         if (!outlineReady || weeks.length === 0) {
             generateOutline();
+            return;
+        }
+
+        // Validated before any write. A blank start date is valid and means an
+        // unscheduled program, which is how every pre-Phase-D program is stored.
+        const schedule = parseScheduleDateInput(startDate);
+        if (!schedule.ok) {
+            ToastService.error("Check the start date", schedule.message);
             return;
         }
 
@@ -151,14 +186,16 @@ export function CreateProgramScreen() {
                 description: description.trim(),
                 level,
                 durationWeeks: weeks.length,
-                weeks: weeks
+                weeks: weeks,
+                ...(schedule.scheduledDateKey ? { startDateKey: schedule.scheduledDateKey } : {}),
             });
-            Alert.alert("Success", "Program architecture assigned!", [
-                { text: "OK", onPress: () => navigation.goBack() }
-            ]);
+            ToastService.success("Program assigned", schedule.scheduledDateKey
+                    ? `Starts ${schedule.scheduledDateKey}. Sessions land on the days you set; a daily prescription still overrides the program for that date.`
+                    : "Unscheduled — your client will see this plan on their Home screen under Active Program, but it will not fill specific dates.");
+            navigation.goBack();
         } catch (error) {
             console.error(error);
-            Alert.alert("Error", "Could not assign program.");
+            ToastService.error("Error", "Could not assign program.");
         } finally {
             setIsSubmitting(false);
         }
@@ -166,7 +203,7 @@ export function CreateProgramScreen() {
 
     return (
         <ScreenShell
-            title="ARCHITECT"
+            title="New program"
             subtitle={`MULTI-WEEK PLAN FOR ${traineeName?.toUpperCase()}`}
             contentStyle={styles.shellContent}
         >
@@ -184,21 +221,41 @@ export function CreateProgramScreen() {
                             <Typography variant="h2">Core Blueprint</Typography>
                         </View>
                         <View style={styles.inputGroup}>
-                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>PROGRAM NAME</Typography>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>PROGRAM NAME</Typography>
                             <TextInput
                                 style={styles.textInput}
                                 placeholder="e.g. 8-Week Hypertrophy Masterclass"
-                                placeholderTextColor="#444"
+                                placeholderTextColor={colors.textDim}
                                 value={title}
                                 onChangeText={setTitle}
                             />
                         </View>
                         <View style={styles.inputGroup}>
-                            <Typography variant="label" color="#8c8c8c" style={{ fontSize: 9 }}>STRATEGIC OBJECTIVES</Typography>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>
+                                START DATE (OPTIONAL)
+                            </Typography>
+                            <TextInput
+                                style={styles.textInput}
+                                placeholder="YYYY-MM-DD"
+                                placeholderTextColor={colors.textDim}
+                                value={startDate}
+                                onChangeText={setStartDate}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                keyboardType="numbers-and-punctuation"
+                            />
+                            <Typography variant="label" color={colors.textDim} style={{ fontSize: 11 }}>
+                                {startDate.trim()
+                                    ? `Day 1 falls on ${startDate.trim()} in your client's timezone.`
+                                    : "Unscheduled — the program still appears on Home, but does not fill specific dates."}
+                            </Typography>
+                        </View>
+                        <View style={styles.inputGroup}>
+                            <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>STRATEGIC OBJECTIVES</Typography>
                             <TextInput
                                 style={[styles.textInput, { height: 100, textAlignVertical: 'top' }]}
                                 placeholder="Detail the periodization and goals..."
-                                placeholderTextColor="#444"
+                                placeholderTextColor={colors.textDim}
                                 multiline
                                 value={description}
                                 onChangeText={setDescription}
@@ -214,11 +271,11 @@ export function CreateProgramScreen() {
                         </View>
                         <View style={styles.row}>
                             <View style={styles.flex1}>
-                                <Typography variant="label" color="#8c8c8c" style={{ fontSize: 8, textAlign: 'center' }}>WEEKS</Typography>
+                                <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11, textAlign: 'center' }}>WEEKS</Typography>
                                 <TextInput style={styles.miniInput} keyboardType="numeric" value={durationWeeks} onChangeText={setDurationWeeks} />
                             </View>
                             <View style={styles.flex1}>
-                                <Typography variant="label" color="#8c8c8c" style={{ fontSize: 8, textAlign: 'center' }}>SESSIONS/WK</Typography>
+                                <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11, textAlign: 'center' }}>PER WEEK</Typography>
                                 <TextInput style={styles.miniInput} keyboardType="numeric" value={sessionsPerWeek} onChangeText={setSessionsPerWeek} />
                             </View>
                         </View>
@@ -240,7 +297,7 @@ export function CreateProgramScreen() {
                     {/* SCAFFOLDING */}
                     {outlineReady && (
                         <View style={styles.list}>
-                            <Typography variant="label" color="#444" style={{ marginLeft: 4 }}>PROGRAM SCAFFOLDING</Typography>
+                            <Typography variant="label" color={colors.textDim} style={{ marginStart: 4 }}>PROGRAM SCAFFOLDING</Typography>
                             {weeks.map((week) => (
                                 <View key={week.id} style={styles.weekCard}>
                                     <View style={styles.weekHeader}>
@@ -253,6 +310,21 @@ export function CreateProgramScreen() {
                                         {week.sessions.map((session) => (
                                             <View key={session.id} style={styles.sessionRow}>
                                                 <TextInput style={styles.sessionInput} value={session.title} onChangeText={(v) => updateSessionTitle(week.id, session.id, v)} />
+                                                {/*
+                                                  * Calendar placement is explicit. It is deliberately NOT
+                                                  * derived from week or session number: a coach who reorders
+                                                  * or removes a session would silently move every later one.
+                                                  * Blank leaves the session unscheduled.
+                                                  */}
+                                                <TextInput
+                                                    style={styles.sessionDayInput}
+                                                    value={session.dayOffset === null || session.dayOffset === undefined ? "" : String(session.dayOffset)}
+                                                    onChangeText={(v) => updateSessionDayOffset(week.id, session.id, v)}
+                                                    placeholder="Day"
+                                                    placeholderTextColor={colors.textDim}
+                                                    keyboardType="number-pad"
+                                                    accessibilityLabel={`Day offset for ${session.title}`}
+                                                />
                                                 <Pressable onPress={() => removeSessionFromWeek(week.id, session.id)} disabled={week.sessions.length <= 1}>
                                                     <Ionicons name="close-circle" size={20} color={week.sessions.length <= 1 ? "#1c1c1e" : "#f87171"} />
                                                 </Pressable>
@@ -304,7 +376,7 @@ const styles = StyleSheet.create({
     levelRow: { flexDirection: 'row', gap: 8 },
     levelPill: { flex: 1, height: 40, borderRadius: 12, backgroundColor: '#0a0a0a', borderWidth: 1, borderColor: '#1c1c1e', alignItems: 'center', justifyContent: 'center' },
     levelPillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-    levelText: { color: '#666', fontSize: 10, fontWeight: '900' },
+    levelText: { color: colors.textMuted, fontSize: 11, fontWeight: '900' },
     levelTextActive: { color: '#000' },
 
     generateBtn: { backgroundColor: colors.primary, height: 50, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
@@ -318,6 +390,19 @@ const styles = StyleSheet.create({
     sessionList: { gap: 8 },
     sessionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#0a0a0a', padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#1c1c1e' },
     sessionInput: { flex: 1, color: '#fff', fontSize: 14, fontWeight: '600' },
+    sessionDayInput: {
+        minWidth: 52,
+        minHeight: 44,
+        paddingHorizontal: 8,
+        color: '#fff',
+        fontSize: 14,
+        fontWeight: '700',
+        textAlign: 'center',
+        backgroundColor: colors.bgDark,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
+    },
     addSessionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, gap: 6, borderStyle: 'dashed', borderWidth: 1, borderColor: '#2c2c2e', borderRadius: 12 },
 
     footer: { marginTop: 8 },

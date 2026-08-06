@@ -151,14 +151,14 @@ export function useProgressCharts(
           : name === "Shoulders" ? "#fbbf24"
           : name === "Arms" ? "#a855f7"
           : "#ffcc00",
-        labelTextStyle: { color: "#8c8c8c", fontSize: 10, fontWeight: "800" } as const,
+        labelTextStyle: { color: colors.textMuted, fontSize: 11, fontWeight: "800" } as const,
       }));
 
     return data.length > 0 ? data : [
-      { value: 0.1, label: "CHE", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
-      { value: 0.1, label: "BAC", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
-      { value: 0.1, label: "LEG", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
-      { value: 0.1, label: "SHO", frontColor: "#333", labelTextStyle: { color: "#444", fontSize: 10 } },
+      { value: 0.1, label: "CHE", frontColor: "#333", labelTextStyle: { color: colors.textDim, fontSize: 11 } },
+      { value: 0.1, label: "BAC", frontColor: "#333", labelTextStyle: { color: colors.textDim, fontSize: 11 } },
+      { value: 0.1, label: "LEG", frontColor: "#333", labelTextStyle: { color: colors.textDim, fontSize: 11 } },
+      { value: 0.1, label: "SHO", frontColor: "#333", labelTextStyle: { color: colors.textDim, fontSize: 11 } },
     ];
   }, [workouts]);
 

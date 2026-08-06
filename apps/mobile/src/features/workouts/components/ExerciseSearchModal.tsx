@@ -59,7 +59,7 @@ export function ExerciseSearchModal({
           <TextInput
             style={[styles.input, { marginTop: 20, marginBottom: 10 }]}
             placeholder="Search 800+ exercises..."
-            placeholderTextColor="#666"
+            placeholderTextColor={colors.textMuted}
             value={query}
             onChangeText={onQueryChange}
           />
@@ -73,7 +73,7 @@ export function ExerciseSearchModal({
           <ScrollView style={{ flex: 1 }}>
             {results.length === 0 ? (
               <View style={styles.emptyResults}>
-                <Typography variant="label" color="#444">
+                <Typography variant="label" color={colors.textDim}>
                   No matches found
                 </Typography>
                 <Pressable
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
   tagRow: { flexDirection: "row", gap: 8, marginTop: 4 },
   tag: { backgroundColor: "#1c1c1e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#2c2c2e" },
-  tagText: { color: "#aaa", fontSize: 10, fontWeight: "900" },
+  tagText: { color: "#aaa", fontSize: 11, fontWeight: "900" },
   actionRow: { flexDirection: "row", gap: 12 },
   infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
   addIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },

@@ -2,5 +2,15 @@
   "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
     "strict": true
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    // 1.2 MB data blob that is not imported anywhere in src/. Expo's base
+    // config enables resolveJsonModule, so leaving it in the program made
+    // tsc build a huge literal type for it and roughly doubled typecheck
+    // time. Excluded from type-checking only — the file is untouched.
+    "src/constants/expanded_exercises.json"
+  ]
 }

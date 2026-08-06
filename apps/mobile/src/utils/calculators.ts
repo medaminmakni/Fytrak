@@ -51,27 +51,35 @@ export const calculateNutritionPlan = (data: OnboardingData): CalculatedPlan => 
   // 3. Goal Adjustment (Caloric Surplus / Deficit)
   let targetCalories = tdee;
   switch (goal?.toLowerCase()) {
-    case 'lose_weight': 
+    case 'lose_weight':
       targetCalories = tdee - 500; break; // Standard aggressive deficit
-    case 'build_muscle': 
+    case 'build_muscle':
       targetCalories = tdee + 300; break; // Lean bulk surplus
-    case 'get_fit': 
+    case 'get_fit':
     case 'athletic_performance':
       targetCalories = tdee; break; // Maintenance + performance focus
   }
 
+  // Safety floor: extreme-but-reachable onboarding inputs (very low
+  // height/weight combined with an older age and a "lose weight" goal) can
+  // otherwise drive BMR/TDEE below zero, which would cascade into negative
+  // carb/fat targets below. Never recommend below a conservative minimum.
+  const MIN_TARGET_CALORIES = 1200;
+  targetCalories = Math.max(MIN_TARGET_CALORIES, targetCalories);
+
   // 4. Macro Calculation (Expert Industry Standard)
   // Protein: 2.2g per kg (High protein for recovery)
-  const proteinGrams = Math.round(weight * 2.2);
+  const proteinGrams = Math.max(0, Math.round(weight * 2.2));
   const proteinCalories = proteinGrams * 4;
 
   // Fats: 25% of total calories
   const fatCalories = targetCalories * 0.25;
-  const fatGrams = Math.round(fatCalories / 9);
+  const fatGrams = Math.max(0, Math.round(fatCalories / 9));
 
-  // Carbs: The remaining calories
+  // Carbs: The remaining calories (clamped — protein alone could theoretically
+  // exceed a floored, very low calorie target for a very light user)
   const remainingCalories = targetCalories - proteinCalories - fatCalories;
-  const carbGrams = Math.round(remainingCalories / 4);
+  const carbGrams = Math.max(0, Math.round(remainingCalories / 4));
 
   return {
     calories: Math.round(targetCalories),

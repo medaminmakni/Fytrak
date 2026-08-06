@@ -34,7 +34,7 @@ export function CoachLibraryScreen() {
     return (
         <ScreenShell
             title="Library"
-            subtitle="Manage your training & meal templates"
+            subtitle="Manage your training and meal templates"
             contentStyle={styles.shellContent}
         >
             <View style={styles.headerRow}>
@@ -62,11 +62,11 @@ export function CoachLibraryScreen() {
             </View>
 
             <View style={styles.searchBar}>
-                <Ionicons name="search" size={18} color="#666" />
+                <Ionicons name="search" size={18} color={colors.iconFaint} />
                 <TextInput
                     style={styles.searchInput}
                     placeholder={`Search ${activeTab}s...`}
-                    placeholderTextColor="#666"
+                    placeholderTextColor={colors.textMuted}
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                 />
@@ -112,7 +112,7 @@ export function CoachLibraryScreen() {
                                                 : `${t.data.macros?.calories || 0} kcal • ${t.data.macros?.protein || 0}g Pro`}
                                         </Text>
                                     </View>
-                                    <Ionicons name="chevron-forward" size={16} color="#444" style={styles.cardArrow} />
+                                    <Ionicons name="chevron-forward" size={16} color={colors.iconFaint} style={styles.cardArrow} />
                                 </Pressable>
                             ))}
                             <Pressable
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
         borderColor: colors.primary,
     },
     tabText: {
-        color: "#666",
+        color: colors.textMuted,
         fontSize: 14,
         fontWeight: "700",
     },
@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     emptyText: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 14,
         textAlign: "center",
         lineHeight: 20,
@@ -256,7 +256,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#161616",
         borderRadius: 24,
         padding: 16,
-        paddingLeft: 24,
+        paddingStart: 24,
         flexDirection: "row",
         alignItems: "center",
         borderWidth: 1,
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
     },
     cardAccent: {
         position: "absolute",
-        left: 0,
+        start: 0,
         top: 0,
         bottom: 0,
         width: 6,
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#1c1c1e",
         alignItems: "center",
         justifyContent: "center",
-        marginRight: 16,
+        marginEnd: 16,
     },
     cardContent: {
         flex: 1,
@@ -290,12 +290,12 @@ const styles = StyleSheet.create({
         marginBottom: 4,
     },
     templateMeta: {
-        color: "#666",
+        color: colors.textMuted,
         fontSize: 13,
         fontWeight: "600",
     },
     cardArrow: {
-        marginLeft: 8,
+        marginStart: 8,
     },
     addFullCard: {
         height: 80,
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     addText: {
-        color: "#666",
+        color: colors.textMuted,
         fontSize: 15,
         fontWeight: "700",
     },

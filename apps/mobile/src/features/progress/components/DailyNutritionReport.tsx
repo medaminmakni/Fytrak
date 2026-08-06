@@ -13,9 +13,15 @@ type DailyNutritionReportProps = {
   targets: MacroTargets;
   totals: { calories: number; protein: number; carbs: number; fats: number };
   waterMl: number;
+  /**
+   * False when no macro plan exists yet. Rings and "x / y kcal" comparisons are
+   * then suppressed rather than drawn against an invented target — progress
+   * against a number nobody set is worse than no number at all.
+   */
+  hasTargets?: boolean;
 };
 
-export function DailyNutritionReport({ meals, targets, totals, waterMl }: DailyNutritionReportProps) {
+export function DailyNutritionReport({ meals, targets, totals, waterMl, hasTargets = true }: DailyNutritionReportProps) {
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -24,10 +30,13 @@ export function DailyNutritionReport({ meals, targets, totals, waterMl }: DailyN
       </View>
       <View style={styles.card}>
         <View style={styles.summaryRow}>
-          <NutritionRing current={totals.calories} target={targets.calories} />
+          {hasTargets && <NutritionRing current={totals.calories} target={targets.calories} />}
           <View style={styles.mainStats}>
             <Typography variant="metric" style={{ fontSize: 28 }}>
-              {totals.calories} <Typography color="#444" style={{ fontSize: 16 }}>/ {targets.calories} kcal</Typography>
+              {totals.calories}{" "}
+              <Typography color={colors.textDim} style={{ fontSize: 16 }}>
+                {hasTargets ? `/ ${targets.calories} kcal` : "kcal logged"}
+              </Typography>
             </Typography>
             <View style={styles.waterMiniRow}>
               <Ionicons name="water" size={14} color="#60a5fa" />
@@ -38,21 +47,30 @@ export function DailyNutritionReport({ meals, targets, totals, waterMl }: DailyN
           </View>
         </View>
 
-        <View style={styles.macrosRow}>
-          <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="flash" />
-          <MacroItem label="Carbs" current={totals.carbs} target={targets.carbs} color={colors.primary} icon="restaurant" />
-          <MacroItem label="Fats" current={totals.fats} target={targets.fats} color="#f87171" icon="water" />
-        </View>
+        {hasTargets ? (
+          <View style={styles.macrosRow}>
+            <MacroItem label="Protein" current={totals.protein} target={targets.protein} color="#4ade80" icon="flash" />
+            <MacroItem label="Carbs" current={totals.carbs} target={targets.carbs} color={colors.primary} icon="restaurant" />
+            <MacroItem label="Fats" current={totals.fats} target={targets.fats} color="#f87171" icon="water" />
+          </View>
+        ) : (
+          <View style={styles.noPlanBox}>
+            <Ionicons name="information-circle-outline" size={16} color={colors.iconFaint} />
+            <Typography variant="label" color={colors.textMuted} style={{ flex: 1 }}>
+              No macro plan set yet. Showing what you logged — {totals.protein}g protein, {totals.carbs}g carbs, {totals.fats}g fats.
+            </Typography>
+          </View>
+        )}
 
         {/* MEAL LIST */}
         <View style={styles.mealList}>
-          <Typography variant="label" color="#444" style={styles.listLabel}>TODAY'S MEALS</Typography>
+          <Typography variant="label" color={colors.textDim} style={styles.listLabel}>TODAY'S MEALS</Typography>
           {meals.length > 0 ? meals.map((meal) => (
             <View key={meal.id} style={styles.mealItem}>
               {meal.imageUrl ? (
                 <Image source={{ uri: meal.imageUrl }} style={styles.mealThumb} />
               ) : (
-                <View style={styles.mealIcon}><Ionicons name="fast-food" size={16} color="#444" /></View>
+                <View style={styles.mealIcon}><Ionicons name="fast-food" size={16} color={colors.iconFaint} /></View>
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.mealName}>{meal.name}</Text>
@@ -70,8 +88,18 @@ export function DailyNutritionReport({ meals, targets, totals, waterMl }: DailyN
 }
 
 const styles = StyleSheet.create({
+  noPlanBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
   section: { gap: spacing.md, marginBottom: spacing.xl },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginLeft: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginStart: 4 },
   sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   card: { backgroundColor: "#111", borderRadius: radius.xl, padding: spacing.xl, borderWidth: 1, borderColor: "#222" },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.lg, marginBottom: spacing.xl },
@@ -81,10 +109,10 @@ const styles = StyleSheet.create({
   mealList: { marginTop: spacing.xl, paddingTop: spacing.xl, borderTopWidth: 1, borderTopColor: "#222" },
   listLabel: { marginBottom: spacing.md },
   mealItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: "#161616", padding: 12, borderRadius: radius.md, marginBottom: 8, borderWidth: 1, borderColor: "#222" },
-  mealThumb: { width: 40, height: 40, borderRadius: 10, marginRight: 12 },
-  mealIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: "#222", alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  mealThumb: { width: 40, height: 40, borderRadius: 10, marginEnd: 12 },
+  mealIcon: { width: 40, height: 40, borderRadius: 10, backgroundColor: "#222", alignItems: 'center', justifyContent: 'center', marginEnd: 12 },
   mealName: { color: "#fff", fontSize: 14, fontWeight: "700" },
-  mealTime: { color: "#666", fontSize: 11, fontWeight: "600", marginTop: 2 },
+  mealTime: { color: colors.textMuted, fontSize: 11, fontWeight: "600", marginTop: 2 },
   mealCals: { color: colors.primary, fontSize: 13, fontWeight: "800" },
-  emptyText: { color: "#444", fontSize: 13, fontStyle: "italic", textAlign: "center", paddingVertical: spacing.md },
+  emptyText: { color: colors.textDim, fontSize: 13, fontStyle: "italic", textAlign: "center", paddingVertical: spacing.md },
 });

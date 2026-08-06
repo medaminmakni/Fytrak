@@ -1,17 +1,18 @@
+import { ToastService } from "../components/Toast";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Alert } from "react-native";
 import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import {
-    fetchCoachClientSignals,
+    toCoachClientSignals,
     respondToTraineeRequest,
     subscribeToCoachTrainees,
+    subscribeToCoachThreadSummaries,
+    type CoachThreadSummary,
     subscribeToPendingCoachRequests,
     type CoachTrainee,
 } from "../services/userSession";
 import { useCurrentUser } from "./useCurrentUser";
 import {
     buildCoachDashboardIntelligence,
-    type CoachClientSignal,
     type CoachClientIntelligence
 } from "../features/coaching/coachIntelligence";
 
@@ -19,17 +20,20 @@ export function useCoachDashboard() {
     const uid = useCurrentUser();
     const [trainees, setTrainees] = useState<CoachTrainee[]>([]);
     const [pendingRequests, setPendingRequests] = useState<CoachTrainee[]>([]);
-    const [clientSignals, setClientSignals] = useState<CoachClientSignal[]>([]);
+    const [threadSummaries, setThreadSummaries] = useState<CoachThreadSummary[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [isLoadingSignals, setIsLoadingSignals] = useState(false);
 
     useEffect(() => {
-        if (!uid) return;
+        if (!uid) {
+            setTrainees([]);
+            setIsLoading(false);
+            return;
+        }
 
         setIsLoading(true);
         const unsubscribe = subscribeWithCache<CoachTrainee[]>(
             `coachTrainees:${uid}`,
-            (emit) => subscribeToCoachTrainees(uid, emit),
+            (emit, onError) => subscribeToCoachTrainees(uid, emit, onError),
             (data) => {
                 setTrainees(data);
                 setIsLoading(false);
@@ -40,7 +44,22 @@ export function useCoachDashboard() {
     }, [uid]);
 
     useEffect(() => {
-        if (!uid) return;
+        if (!uid) {
+            setThreadSummaries([]);
+            return;
+        }
+        return subscribeWithCache<CoachThreadSummary[]>(
+            `coachThreads:${uid}`,
+            (emit, onError) => subscribeToCoachThreadSummaries(uid, emit, onError),
+            setThreadSummaries
+        );
+    }, [uid]);
+
+    useEffect(() => {
+        if (!uid) {
+            setPendingRequests([]);
+            return;
+        }
 
         const unsubscribe = subscribeWithCache<CoachTrainee[]>(
             `coachPendingRequests:${uid}`,
@@ -65,31 +84,10 @@ export function useCoachDashboard() {
     const pending = pendingRequests;
     const assigned = useMemo(() => trainees.filter(t => t.assignmentStatus === "assigned"), [trainees]);
 
-    useEffect(() => {
-        let isMounted = true;
-
-        if (assigned.length === 0) {
-            setClientSignals([]);
-            return;
-        }
-
-        setIsLoadingSignals(true);
-        fetchCoachClientSignals(assigned)
-            .then((signals) => {
-                if (isMounted) setClientSignals(signals);
-            })
-            .catch((error) => {
-                console.error("Failed to load coach intelligence:", error);
-                if (isMounted) setClientSignals([]);
-            })
-            .finally(() => {
-                if (isMounted) setIsLoadingSignals(false);
-            });
-
-        return () => {
-            isMounted = false;
-        };
-    }, [assigned]);
+    // Pure projection over fields the roster snapshot already carries — no I/O.
+    // Previously an async effect, which caused three renders and a spinner
+    // flash on every Firestore snapshot for a microsecond computation.
+    const clientSignals = useMemo(() => toCoachClientSignals(assigned), [assigned]);
 
     const dashboard = useMemo(() => buildCoachDashboardIntelligence(clientSignals), [clientSignals]);
 
@@ -117,8 +115,8 @@ export function useCoachDashboard() {
     }, [dashboard.clients]);
 
     const unreadMessages = useMemo(() => {
-        return assigned.reduce((sum, trainee) => sum + (trainee.clientSummary?.unreadCoachCount || 0), 0);
-    }, [assigned]);
+        return threadSummaries.reduce((sum, thread) => sum + thread.unreadByCoach, 0);
+    }, [threadSummaries]);
 
     const stats = useMemo(() => {
         return {
@@ -145,25 +143,48 @@ export function useCoachDashboard() {
 
     const handleAction = useCallback(async (traineeId: string, name: string, accept: boolean) => {
         const action = accept ? "Accept" : "Reject";
-        Alert.alert(
-            `${action} Request`,
-            `Do you want to ${action.toLowerCase()} ${name}'s request?`,
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: action,
-                    style: accept ? "default" : "destructive",
-                    onPress: async () => {
-                        try {
-                            await respondToTraineeRequest(traineeId, accept);
-                        } catch (error) {
-                            console.error(`Failed to ${action} trainee:`, error);
-                            Alert.alert("Error", `Could not ${action.toLowerCase()} request.`);
-                        }
-                    }
+        ToastService.confirm({
+            title: `${action} request?`,
+            message: `${name} is waiting for your coaching decision.`,
+            confirmLabel: action,
+            destructive: !accept,
+            onConfirm: async () => {
+                try {
+                    await respondToTraineeRequest(traineeId, accept);
+                } catch (error) {
+                    console.error(`Failed to ${action} trainee:`, error);
+                    ToastService.error("Error", `Could not ${action.toLowerCase()} request.`);
                 }
-            ]
-        );
+            },
+        });
+    }, []);
+
+    const handleReviewRequest = useCallback((traineeId: string, name: string) => {
+        // Three outcomes — accept, reject, or decide later — so this is a
+        // choice rather than a confirmation. Dismissing leaves the request
+        // pending, which is the safe default for someone else's application.
+        ToastService.choose({
+            title: "Review client request",
+            message: `${name} is waiting for your coaching decision.`,
+            cancelLabel: "Decide later",
+            options: [
+                {
+                    label: "Accept",
+                    onPress: () => void respondToTraineeRequest(traineeId, true).catch((error) => {
+                        console.error("Failed to accept trainee:", error);
+                        ToastService.error("Error", "Could not accept request.");
+                    }),
+                },
+                {
+                    label: "Reject",
+                    destructive: true,
+                    onPress: () => void respondToTraineeRequest(traineeId, false).catch((error) => {
+                        console.error("Failed to reject trainee:", error);
+                        ToastService.error("Error", "Could not reject request.");
+                    }),
+                },
+            ],
+        });
     }, []);
 
     return {
@@ -171,7 +192,6 @@ export function useCoachDashboard() {
         pending,
         assigned,
         isLoading,
-        isLoadingSignals,
         stats,
         insights,
         unreadMessages,
@@ -180,5 +200,6 @@ export function useCoachDashboard() {
         recentActivity,
         clientIntelligenceById,
         handleAction,
+        handleReviewRequest,
     };
 }

@@ -1,4 +1,5 @@
 import { AssignmentStatus, UserRole } from "../state/types";
+import type { ClientDateMetadata } from "../../../../packages/shared/src";
 
 export type ProfileLevel = "Beginner" | "Intermediate" | "Advanced";
 
@@ -26,6 +27,28 @@ export interface UserProfile {
   assignmentStatus?: AssignmentStatus;
   selectedCoachId?: string | null;
   selectedCoachName?: string | null;
+  /**
+   * The client's IANA timezone, e.g. "Africa/Tunis". Null until captured.
+   *
+   * Every date key on this user's logs is anchored to this zone. No country
+   * default is ever written — an uncaptured zone stays null so that inferred
+   * dates remain distinguishable from confirmed ones.
+   */
+  timezone?: string | null;
+  timezoneSource?: "captured" | null;
+  timezoneCapturedAt?: unknown;
+  /**
+   * The current coaching relationship instance. Backend-written only — the
+   * Firestore rules' hasOnly() allowlists exclude it, so a client cannot point
+   * itself at another relationship's chat thread or records.
+   */
+  activeAssignmentId?: string | null;
+  /**
+   * Coach verification, as stored on the user document and already used to rank
+   * the discovery list. Read here so the chat header can show a real badge
+   * rather than a decorative one.
+   */
+  verified?: boolean;
   macroTargets?: MacroTargets;
   lifestyle?: Lifestyle;
   medical?: Medical;
@@ -74,7 +97,7 @@ export interface CoachProfile {
   rating?: number;
 }
 
-export interface Meal {
+export interface Meal extends ClientDateMetadata {
   id: string;
   name: string;
   calories: number;
@@ -109,7 +132,7 @@ export interface WorkoutSet {
   isCompleted: boolean;
 }
 
-export interface WorkoutLog {
+export interface WorkoutLog extends ClientDateMetadata {
   id: string;
   name: string;
   date?: string;
@@ -144,7 +167,7 @@ export interface PrescribedWorkout {
   assignedAt: any;
 }
 
-export interface BodyMetric {
+export interface BodyMetric extends ClientDateMetadata {
   id: string;
   date: string;
   weight?: number;
@@ -153,24 +176,16 @@ export interface BodyMetric {
   createdAt?: any;
 }
 
-export interface Program {
-  id: string;
-  coachId: string;
-  coachName: string;
-  title: string;
-  description: string;
-  level: ProfileLevel;
-  weeks: ProgramWeek[];
-}
-
-export interface ProgramWeek {
-  weekNumber: number;
-  sessions: ProgramSession[];
-}
-
-export interface ProgramSession {
-  id: string;
-  title: string;
-  dayNumber: number;
-  isCompleted: boolean;
-}
+/*
+ * Program, ProgramWeek and ProgramSession used to be declared here as well.
+ *
+ * They were a stale duplicate: nothing wrote them, nothing outside this file
+ * read them, and they had drifted from the real persisted shape — the local
+ * ProgramSession declared `dayNumber`, a field no code in the repo has ever
+ * written, while every actual document carries `sessionNumber`. The local
+ * Program was also missing `durationWeeks` and `assignedAt`.
+ *
+ * The authoritative definitions live in services/programService.ts, which is
+ * what CreateProgramScreen writes and what subscribeToTraineePrograms reads.
+ * Import them from there (or via services/userSession).
+ */

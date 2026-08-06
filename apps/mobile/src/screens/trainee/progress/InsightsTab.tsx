@@ -20,7 +20,7 @@ export function InsightsTab() {
   const workouts = useWorkouts();
   const { metrics } = useBodyMetrics();
   const { profile: userProfile } = useUserProfile();
-  const meals = useDailyNutrition();
+  const meals = useDailyNutrition(userProfile?.timezone);
 
   const [chartFilter, setChartFilter] = useState<ChartFilter>("1M");
   const [selectedPrId, setSelectedPrId] = useState<string>("e1");
@@ -130,8 +130,8 @@ export function InsightsTab() {
             xAxisThickness={0}
             hideRules
             width={Dimensions.get("window").width - 100}
-            yAxisTextStyle={{ color: "rgba(255,255,255,0.25)", fontSize: 10, fontWeight: "700" }}
-            xAxisLabelTextStyle={{ color: "rgba(255,255,255,0.3)", fontSize: 10, fontWeight: "800" }}
+            yAxisTextStyle={{ color: "rgba(255,255,255,0.25)", fontSize: 11, fontWeight: "700" }}
+            xAxisLabelTextStyle={{ color: "rgba(255,255,255,0.3)", fontSize: 11, fontWeight: "800" }}
             isAnimated
             animationDuration={800}
           />
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     color: colors.textDim,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 0.8,
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   },
   metricUnit: {
     color: colors.primary,
-    fontSize: 8,
+    fontSize: 11,
     fontWeight: "900",
     textTransform: "uppercase",
   },
@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: radius.pill,
     backgroundColor: "rgba(255,255,255,0.04)",
-    marginRight: 8,
+    marginEnd: 8,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   },
   prFilterText: {
     color: colors.textDim,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
   },
   prFilterTextActive: {

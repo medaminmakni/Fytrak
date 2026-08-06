@@ -14,5 +14,48 @@ apps/mobile/web-build/
 **/.env.local
 **/.env*.local
 
+# Credentials — NEVER commit these.
+# google-services.json is deliberately NOT ignored: it carries the public
+# Firebase client config, which is designed to ship inside the app bundle and
+# is not a secret. An Admin SDK key is the opposite and must stay out.
+*-firebase-adminsdk-*.json
+**/serviceAccount*.json
+**/service-account*.json
+**/*.pem
+**/*.p12
+**/*.keystore
+**/*.jks
+
 # Build artifacts
 **/*.tsbuildinfo
+**/*.apk
+**/*.aab
+
+# Local logs and emulator output. These can contain project ids, document
+# paths and user ids from real test data, so they must not be committed.
+*.log
+**/*.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+database-debug.log*
+pubsub-debug.log*
+
+# Scoped typecheck aids created during verification passes
+**/tsconfig.*.tmp.json
+
+# Working notes: audits, design specs and phase reports produced while
+# refactoring. Listed by name rather than a *.md glob so README.md and
+# anything under docs/ stay tracked.
+/AUDIT_FIREBASE_COACH.md
+/AUDIT_RN_PERF.md
+/COACHING_LOOP_DESIGN.md
+/COACHING_SCENARIOS.md
+/DAILY_REPORT_FINAL_DESIGN.md
+/DAILY_REPORT_STEP1_CORRECTED.md
+/DAILY_REPORT_STEP1_DISCOVERY.md
+/DESIGN_SYSTEM_REFACTOR.md
+/FYTRAK_ANALYSIS.md
+/ONBOARDING_WORKOUT_VERIFICATION.md
+/PRODUCTION_AUDIT.md
+/V0_RUNTIME_ARCHITECTURE.md

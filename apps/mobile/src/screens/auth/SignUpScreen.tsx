@@ -1,50 +1,41 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View, ScrollView } from "react-native";
+import { Pressable, StyleSheet, Text, View, ScrollView } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
+import { radius, spacing, touchTarget, typography } from "../../theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../../components/Typography";
 import { PrimaryButton } from "../../components/Button";
-import * as WebBrowser from "expo-web-browser";
-import { ResponseType } from "expo-auth-session";
-import * as Google from "expo-auth-session/providers/google";
-import * as Facebook from "expo-auth-session/providers/facebook";
+import { TextField } from "../../components/TextField";
 import { appEnv } from "../../config/env";
-import { appAuthRedirectUri } from "../../utils/authRedirect";
 import { BrandLogo } from "../../components/BrandLogo";
-
-WebBrowser.maybeCompleteAuthSession();
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "../../navigation/types";
 
 type SignUpScreenProps = {
+  /**
+   * Decided on Welcome, not here. Asking "trainee or coach?" mid-form made the
+   * user answer a question they had already answered by choosing a button, and
+   * it was the one field with no obvious default.
+   */
+  role: "trainee" | "coach";
   onSignUp: (payload: { name: string; email: string; password: string; role: "trainee" | "coach" }) => Promise<void>;
-  onGoogleLogin: (idToken: string, role: "trainee" | "coach") => Promise<void>;
-  onFacebookLogin: (accessToken: string, role: "trainee" | "coach") => Promise<void>;
+  onGoogleLogin: (role: "trainee" | "coach") => Promise<void>;
+  onFacebookLogin: (role: "trainee" | "coach") => Promise<void>;
 };
 
-export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignUpScreenProps) {
+export function SignUpScreen({ role, onSignUp, onGoogleLogin, onFacebookLogin }: SignUpScreenProps) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isCoach = role === "coach";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState<"trainee" | "coach">("trainee");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [request, _response, promptAsync] = Google.useAuthRequest({
-    clientId: appEnv.google.expoClientId || appEnv.google.webClientId,
-    webClientId: appEnv.google.webClientId,
-    androidClientId: appEnv.google.androidClientId,
-    scopes: ["openid", "profile", "email"],
-    responseType: ResponseType.IdToken,
-    redirectUri: appAuthRedirectUri,
-    selectAccount: true,
-  });
-  const [facebookRequest, _facebookResponse, promptFacebookAsync] = Facebook.useAuthRequest({
-    clientId: appEnv.facebook.appId || "missing-facebook-app-id",
-    redirectUri: appAuthRedirectUri,
-  });
-
   const canSubmit = useMemo(() => {
     return (
       name.trim().length > 1 &&
@@ -77,7 +68,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
   };
 
   const handleGoogleLogin = async () => {
-    if (!appEnv.google.webClientId || !request) {
+    if (!appEnv.google.webClientId) {
       setErrorText("Google Authentication is not configured.");
       return;
     }
@@ -89,20 +80,7 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
     try {
       setIsSubmitting(true);
       setErrorText(null);
-      const result = await promptAsync();
-
-      if (result.type !== "success") {
-        setErrorText(result.type === "error" ? result.error?.message ?? "Google sign-in failed." : "Google sign-in was cancelled.");
-        return;
-      }
-
-      const idToken = result.params?.id_token;
-      if (!idToken) {
-        setErrorText("Google sign-in failed: missing ID token.");
-        return;
-      }
-
-      await onGoogleLogin(idToken, role);
+      await onGoogleLogin(role);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Google sign-in failed.");
     } finally {
@@ -111,30 +89,12 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
   };
 
   const handleFacebookLogin = async () => {
-    if (!appEnv.facebook.appId || !facebookRequest) {
-      setErrorText("Facebook Authentication is not configured.");
-      return;
-    }
-
     if (isSubmitting) return;
 
     try {
       setIsSubmitting(true);
       setErrorText(null);
-      const result = await promptFacebookAsync();
-
-      if (result.type !== "success") {
-        setErrorText("Facebook sign-in was cancelled.");
-        return;
-      }
-
-      const accessToken = result.authentication?.accessToken || result.params?.access_token;
-      if (!accessToken) {
-        setErrorText("Facebook sign-in failed: missing access token.");
-        return;
-      }
-
-      await onFacebookLogin(accessToken, role);
+      await onFacebookLogin(role);
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "Facebook sign-in failed.");
     } finally {
@@ -153,127 +113,149 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
     >
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         <View style={styles.form}>
-          <View style={styles.inputGroup}>
-            <Typography variant="label">Name</Typography>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="Name"
-              placeholderTextColor="#8C93A3"
-              style={styles.input}
+          {/*
+            * The trainee and coach forms are identical, so without this banner
+            * the only evidence of which account you are creating is the button
+            * you tapped a screen ago. It states the role and offers a way back
+            * — saying "you are creating a coach account" with no escape would
+            * just be a dead end.
+            */}
+          <View style={styles.roleBanner}>
+            <Ionicons
+              name={isCoach ? "trophy-outline" : "fitness-outline"}
+              size={16}
+              color={colors.primary}
             />
+            <Text style={styles.roleBannerTitle} numberOfLines={1}>
+              {isCoach ? "Coach account" : "Trainee account"}
+            </Text>
+            <Pressable
+              onPress={() => navigation.navigate("Welcome")}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Change account type"
+            >
+              <Text style={styles.roleBannerChange}>Change</Text>
+            </Pressable>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              placeholder="ex: Name@gmail.com"
-              placeholderTextColor="#8C93A3"
-              style={styles.input}
-            />
-          </View>
+          <TextField
+            label="Name"
+            required
+            value={name}
+            onChangeText={setName}
+            placeholder="Your full name"
+            autoComplete="name"
+            textContentType="name"
+            editable={!isSubmitting}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Phone (Optional)</Text>
-            <TextInput
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-              placeholder="ex: 99 000 555"
-              placeholderTextColor="#8C93A3"
-              style={styles.input}
-            />
-          </View>
+          <TextField
+            label="Email"
+            required
+            value={email}
+            onChangeText={setEmail}
+            placeholder="name@example.com"
+            autoCapitalize="none"
+            autoComplete="email"
+            textContentType="emailAddress"
+            keyboardType="email-address"
+            editable={!isSubmitting}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              placeholder="Min 6 characters"
-              placeholderTextColor="#8C93A3"
-              style={styles.input}
-            />
-            {password.length > 0 && password.length < 6 && (
-              <Text style={{ color: colors.danger, fontSize: 10, marginLeft: 4 }}>Must be at least 6 characters</Text>
-            )}
-          </View>
+          <TextField
+            label="Phone"
+            helperText="Optional"
+            value={phone}
+            onChangeText={setPhone}
+            placeholder="99 000 555"
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            textContentType="telephoneNumber"
+            editable={!isSubmitting}
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Confirm password</Text>
-            <TextInput
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-              placeholder="Re-type password"
-              placeholderTextColor="#8C93A3"
-              style={styles.input}
-            />
-            {confirmPassword.length > 0 && confirmPassword !== password && (
-              <Text style={{ color: colors.danger, fontSize: 10, marginLeft: 4 }}>Passwords do not match</Text>
-            )}
-            {confirmPassword.length > 0 && confirmPassword === password && password.length >= 6 && (
-              <Text style={{ color: colors.primary, fontSize: 10, marginLeft: 4 }}>Passwords match!</Text>
-            )}
-          </View>
+          {/*
+            Validation only speaks once the field has been touched. Showing
+            "must be at least 6 characters" against an empty box tells the user
+            they got something wrong before they have typed anything.
+          */}
+          <TextField
+            label="Password"
+            required
+            password
+            value={password}
+            onChangeText={setPassword}
+            placeholder="At least 6 characters"
+            autoComplete="new-password"
+            textContentType="newPassword"
+            editable={!isSubmitting}
+            errorText={
+              password.length > 0 && password.length < 6
+                ? "Must be at least 6 characters"
+                : undefined
+            }
+          />
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>I want to join as a...</Text>
-            <View style={styles.roleGrid}>
-              <Pressable
-                style={[styles.roleCard, role === "trainee" && styles.roleCardActive]}
-                onPress={() => setRole("trainee")}
-              >
-                <View style={[styles.roleIconContainer, role === "trainee" && styles.roleIconActive]}>
-                  <Ionicons
-                    name="fitness-outline"
-                    size={24}
-                    color={role === "trainee" ? colors.primary : "#8c8c8c"}
-                  />
-                </View>
-                <Text style={[styles.roleLabel, role === "trainee" && styles.roleLabelActive]}>Trainee</Text>
-                <Text style={styles.roleSub}>I want to be coached</Text>
-              </Pressable>
+          <TextField
+            label="Confirm password"
+            required
+            password
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            placeholder="Re-type your password"
+            autoComplete="new-password"
+            textContentType="newPassword"
+            editable={!isSubmitting}
+            errorText={
+              confirmPassword.length > 0 && confirmPassword !== password
+                ? "Passwords do not match"
+                : undefined
+            }
+          />
 
-              <Pressable
-                style={[styles.roleCard, role === "coach" && styles.roleCardActive]}
-                onPress={() => setRole("coach")}
-              >
-                <View style={[styles.roleIconContainer, role === "coach" && styles.roleIconActive]}>
-                  <Ionicons
-                    name="trophy-outline"
-                    size={24}
-                    color={role === "coach" ? colors.primary : "#8c8c8c"}
-                  />
-                </View>
-                <Text style={[styles.roleLabel, role === "coach" && styles.roleLabelActive]}>Coach</Text>
-                <Text style={styles.roleSub}>I want to manage clients</Text>
-              </Pressable>
-            </View>
-          </View>
+          {/*
+            * The trainee/coach picker used to live here. It is gone: the choice
+            * is made on Welcome, and repeating it mid-form asked the user to
+            * re-answer something they had already decided.
+            */}
 
-          <Pressable style={styles.termsRow} onPress={() => setAcceptedTerms((prev) => !prev)}>
+          {/*
+            The whole row is the target, not the 18px box: an 18px checkbox is
+            well under the 44px minimum and was the smallest tappable thing in
+            the app.
+          */}
+          <Pressable
+            style={styles.termsRow}
+            onPress={() => setAcceptedTerms((prev) => !prev)}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: acceptedTerms }}
+            accessibilityLabel="I understood the terms and policy"
+          >
             <View style={[styles.checkbox, acceptedTerms && styles.checkboxActive]}>
-              {acceptedTerms && <Ionicons name="checkmark" size={10} color={colors.primaryText} />}
+              {acceptedTerms && (
+                <Ionicons name="checkmark" size={14} color={colors.primaryText} />
+              )}
             </View>
             <Text style={styles.termsText}>
               I understood the <Text style={styles.termsLink}>terms & policy</Text>
             </Text>
           </Pressable>
 
+          {/* The last thing read before committing, so it names the role too. */}
           <PrimaryButton
-            title="Sign up"
-            disabled={!canSubmit || isSubmitting}
+            title={isCoach ? "Create coach account" : "Create trainee account"}
+            disabled={!canSubmit}
+            loading={isSubmitting}
             onPress={() => void handleSignUp()}
             style={styles.signupBtn}
           />
 
-          {errorText ? <Typography color={colors.danger} style={styles.errorText}>{errorText}</Typography> : null}
+          {errorText ? (
+            <Typography variant="label" color={colors.danger} style={styles.errorText}>
+              {errorText}
+            </Typography>
+          ) : null}
 
           <Text style={styles.socialLabel}>or sign up with</Text>
           <View style={styles.socialRow}>
@@ -305,106 +287,78 @@ export function SignUpScreen({ onSignUp, onGoogleLogin, onFacebookLogin }: SignU
 const styles = StyleSheet.create({
   contentTight: {
     marginTop: 0,
+    // ScreenShell's `centered` mode gives the content area flex: 0, so a long
+    // form contributes its FULL height to the layout instead of scrolling
+    // inside a bounded box. Once that exceeds the screen, the container's
+    // justifyContent: "center" splits the overflow top and bottom and shoves
+    // the header off the top edge — which is what was clipping the logo.
+    //
+    // flex: 1 hands the leftover height to the scroll area, so the header stays
+    // put at full size and the form scrolls within what remains.
+    flex: 1,
   },
   centeredHeader: {
     textAlign: "center",
     width: "100%",
   },
 
+  /*
+   * inputGroup / label / input are gone — TextField owns the well, the label,
+   * the placeholder colour and the validation line, so five copies of each
+   * collapsed into five component calls.
+   */
   form: {
-    marginTop: 20,
-    gap: 12,
-  },
-  inputGroup: {
-    gap: 6,
-  },
-  label: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 2,
-  },
-  input: {
-    backgroundColor: colors.inputBg,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    color: colors.inputText,
-    fontSize: 15,
-    borderWidth: 0,
+    marginTop: spacing.xl,
+    gap: spacing.lg,
   },
   termsRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    marginTop: 4,
-    marginBottom: 4,
+    gap: spacing.md,
+    minHeight: touchTarget.min,
   },
   checkbox: {
-    width: 18,
-    height: 18,
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    backgroundColor: colors.surfaceInset,
+    borderRadius: radius.nested,
     alignItems: "center",
     justifyContent: "center",
   },
   checkboxActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   termsText: {
-    color: "#8c8c8c",
-    fontSize: 13,
+    ...typography.body,
+    color: colors.textSecondary,
+    flex: 1,
   },
   termsLink: {
     color: colors.primary,
     textDecorationLine: "underline",
   },
-  roleGrid: {
+  // roleGrid / roleCard / roleIcon* / roleLabel* / roleSub removed with the
+  // trainee-coach picker — the role now arrives as a prop from Welcome.
+  roleBanner: {
     flexDirection: "row",
-    gap: 12,
-    marginTop: 8,
-  },
-  roleCard: {
-    flex: 1,
-    backgroundColor: colors.inputBg,
-    borderRadius: 20,
-    padding: 16,
     alignItems: "center",
-    borderWidth: 2,
-    borderColor: "transparent",
     gap: 8,
+    backgroundColor: colors.primaryMuted,
+    borderRadius: 999,
+    minHeight: 40,
+    paddingHorizontal: 14,
+    alignSelf: "flex-start",
   },
-  roleCardActive: {
-    borderColor: colors.primary,
-    backgroundColor: "#1c1d15",
-  },
-  roleIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#1c1c1e",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 4,
-  },
-  roleIconActive: {
-    backgroundColor: "#22251a",
-  },
-  roleLabel: {
-    color: "#8c8c8c",
-    fontSize: 16,
+  roleBannerTitle: {
+    color: colors.text,
+    fontSize: 13,
     fontWeight: "800",
+    marginEnd: 4,
   },
-  roleLabelActive: {
+  roleBannerChange: {
     color: colors.primary,
-  },
-  roleSub: {
-    color: "#444",
-    fontSize: 10,
-    fontWeight: "600",
-    textAlign: "center",
+    fontSize: 13,
+    fontWeight: "800",
   },
   primaryButton: {
     marginTop: 4,
@@ -436,7 +390,7 @@ const styles = StyleSheet.create({
   },
   socialLabel: {
     textAlign: "center",
-    color: "#8c8c8c",
+    color: colors.textMuted,
     marginTop: 10,
     fontSize: 14,
   },

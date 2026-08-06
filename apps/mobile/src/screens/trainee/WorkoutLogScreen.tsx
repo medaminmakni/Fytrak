@@ -1,10 +1,11 @@
 import * as Haptics from "expo-haptics";
-import { useEffect, useState, useCallback } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, Alert, Platform, KeyboardAvoidingView } from "react-native";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { I18nManager, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Alert, Platform, KeyboardAvoidingView } from "react-native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
-import { auth } from "../../config/firebase";
+import { waitForPendingWrites } from "firebase/firestore";
+import { auth, db } from "../../config/firebase";
 import {
   saveWorkoutLog,
   completePrescribedWorkout,
@@ -42,6 +43,13 @@ import { ExerciseSearchModal } from "../../features/workouts/components/Exercise
 import { WorkoutCheckInView } from "../../features/workouts/components/WorkoutCheckInView";
 import { WorkoutIntakeView } from "../../features/workouts/components/WorkoutIntakeView";
 import { RestTimer } from "../../features/workouts/components/RestTimer";
+import { useClientDateKey } from "../../hooks/useClientDateKey";
+import { resolvePlanDimension } from "../../features/plans/planResolution";
+import {
+  selectUnscheduled,
+  toWorkoutCandidates,
+  type ScheduledPrescribedWorkout,
+} from "../../features/plans/planAdapters";
 
 type ExerciseLog = ActiveWorkoutExerciseDraft;
 
@@ -49,6 +57,18 @@ export function WorkoutLogScreen() {
   const workouts = useWorkouts();
   const prescribed = usePrescribedWorkouts();
   const { profile } = useUserProfile();
+  const dateKey = useClientDateKey(profile?.timezone);
+  const scheduledPrescriptions = prescribed as ScheduledPrescribedWorkout[];
+  const todayPrescription = useMemo(
+    () => resolvePlanDimension({
+      dateKey,
+      dailyCandidates: toWorkoutCandidates(scheduledPrescriptions),
+    }),
+    [dateKey, prescribed]
+  );
+  const visiblePrescription = todayPrescription.sourceType === "daily"
+    ? todayPrescription.payload
+    : selectUnscheduled(scheduledPrescriptions)[0] ?? null;
 
   const {
     workoutName, setWorkoutName,
@@ -59,6 +79,7 @@ export function WorkoutLogScreen() {
     restTimeLeft, setRestTimeLeft,
     timerActive, setTimerActive,
     initFromPrescribed,
+    initFromProgramSession,
     toggleSet,
     updateSet,
     duplicateSet,
@@ -140,6 +161,11 @@ export function WorkoutLogScreen() {
   const [energy, setEnergy] = useState(3);
   const [soreness, setSoreness] = useState(3);
   const [mood, setMood] = useState(3);
+  const [isSubmittingWorkout, setIsSubmittingWorkout] = useState(false);
+  // Tracks the id returned by saveWorkoutLog once it succeeds, so that if a
+  // later step (completePrescribedWorkout / clearActiveWorkoutDraft) throws
+  // and the user retries, we don't create a second duplicate workout doc.
+  const savedWorkoutIdRef = useRef<string | null>(null);
 
   // PREVENT ACCIDENTAL DISCARD
   useFocusEffect(
@@ -147,22 +173,18 @@ export function WorkoutLogScreen() {
       const onBeforeRemove = (e: any) => {
         if (totalSetsCompleted === 0 || isCheckingIn || showIntake) return;
         e.preventDefault();
-        Alert.alert(
-          "Discard Workout?",
-          "Are you sure you want to leave? Your active log will be lost.",
-          [
-            { text: "Keep Logging", style: "cancel", onPress: () => { } },
-            {
-              text: "Discard",
-              style: "destructive",
-              onPress: () => {
-                const userId = auth.currentUser?.uid;
-                if (userId) void clearActiveWorkoutDraft(userId);
-                navigation.dispatch(e.data.action);
-              }
-            }
-          ]
-        );
+        ToastService.confirm({
+          title: "Discard this workout?",
+          message: "Your active log will be lost.",
+          confirmLabel: "Discard",
+          cancelLabel: "Keep logging",
+          destructive: true,
+          onConfirm: () => {
+            const userId = auth.currentUser?.uid;
+            if (userId) void clearActiveWorkoutDraft(userId);
+            navigation.dispatch(e.data.action);
+          },
+        });
       };
       navigation.addListener('beforeRemove', onBeforeRemove);
       return () => navigation.removeListener('beforeRemove', onBeforeRemove);
@@ -186,27 +208,45 @@ export function WorkoutLogScreen() {
     }
   }, [route.params?.autoLoadPrescriptionId, prescribed]);
 
+  useEffect(() => {
+    const programSession = route.params?.programSession;
+    if (!programSession) return;
+    initFromProgramSession(programSession);
+    navigation.setParams({ programSession: undefined });
+  }, [initFromProgramSession, navigation, route.params?.programSession]);
+
 
 
 
   const handleCompleteWithCheckIn = async () => {
     const user = auth.currentUser;
     if (!user) return;
+    if (isCompletingWorkoutRef.current) return; // re-entrancy guard: blocks double-tap/double-invoke
+    isCompletingWorkoutRef.current = true;
+    setIsSubmittingWorkout(true);
     try {
-      isCompletingWorkoutRef.current = true;
       const completedExercises = getCompletedWorkoutExercises(exercises);
       const personalRecords = detectWorkoutPersonalRecords(completedExercises, workouts);
       const totalVolume = calculateWorkoutVolume(completedExercises);
       const duration = Math.max(1, Math.round((Date.now() - new Date(workoutStartedAt).getTime()) / 60000));
-      await saveWorkoutLog(user.uid, {
-        name: workoutName.trim() || "Today's Session",
-        exercises: completedExercises,
-        duration,
-        totalVolume,
-        checkIn: { energy, soreness, mood }
-      });
+
+      // Only write the workout log once. If a later step below throws and
+      // the user retries, savedWorkoutIdRef already being set skips this
+      // call instead of creating a duplicate workout document.
+      if (!savedWorkoutIdRef.current) {
+        savedWorkoutIdRef.current = await saveWorkoutLog(
+          user.uid,
+          {
+            name: workoutName.trim() || "Today's Session",
+            exercises: completedExercises,
+            duration,
+            totalVolume,
+            checkIn: { energy, soreness, mood }
+          },
+          profile?.timezone
+        );
+      }
       if (activePrescriptionId) await completePrescribedWorkout(user.uid, activePrescriptionId);
-      await clearActiveWorkoutDraft(user.uid);
       trackEvent("workout_completed", {
         setsCompleted: completedExercises.reduce((sum, exercise) => sum + exercise.sets.length, 0),
         totalVolume,
@@ -222,11 +262,39 @@ export function WorkoutLogScreen() {
           ? `${personalRecords[0].exerciseName}: ${personalRecords[0].estimatedOneRepMax}kg estimated 1RM`
           : "Excellent work today."
       );
+      savedWorkoutIdRef.current = null;
+      setIsSubmittingWorkout(false);
       navigation.navigate("Home");
+
+      // saveWorkoutLog's addDoc() resolves as soon as the write is queued
+      // locally, not once the server confirms it — this SDK configuration
+      // has no durable offline cache on React Native (memory-only), so a
+      // killed app before a queued write syncs would otherwise lose it.
+      // Give the write a bounded window to reach the server before deleting
+      // the AsyncStorage draft backup. isCompletingWorkoutRef stays true
+      // (blocking the autosave effect from touching the draft) until this
+      // settles. This reduces, but cannot fully eliminate, the data-loss
+      // window without switching to a Firestore client with real disk
+      // persistence on RN.
+      Promise.race([
+        waitForPendingWrites(db).catch(() => undefined),
+        new Promise((resolve) => setTimeout(resolve, 8000)),
+      ])
+        .then(() => clearActiveWorkoutDraft(user.uid))
+        .catch(() => {})
+        .finally(() => {
+          isCompletingWorkoutRef.current = false;
+        });
     } catch (error) {
       console.error("Workout submission error:", error);
       isCompletingWorkoutRef.current = false;
-      ToastService.error("Error", "Could not save log. Your workout draft is still saved.");
+      setIsSubmittingWorkout(false);
+      ToastService.error(
+        "Error",
+        savedWorkoutIdRef.current
+          ? "Your workout was saved, but finishing touches failed. Tap Submit again to retry."
+          : "Could not save log. Your workout draft is still saved."
+      );
     }
   };
 
@@ -259,6 +327,7 @@ export function WorkoutLogScreen() {
           onMoodChange={setMood}
           onSubmit={handleCompleteWithCheckIn}
           onBack={() => setIsCheckingIn(false)}
+          isSubmitting={isSubmittingWorkout}
         />
       </ScreenShell>
     );
@@ -268,10 +337,12 @@ export function WorkoutLogScreen() {
     <ScreenShell title="Workout" subtitle="Track progress" contentStyle={styles.shellContent}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          {profile?.isPremium && prescribed.length > 0 && workoutName !== prescribed[0].title && (
-            <Pressable style={styles.prescribedBanner} onPress={() => initFromPrescribed(prescribed[0])}>
+          {(profile?.isPremium || profile?.assignmentStatus === "assigned") && visiblePrescription && workoutName !== visiblePrescription.title && (
+            <Pressable style={styles.prescribedBanner} onPress={() => initFromPrescribed(visiblePrescription)}>
               <Ionicons name="flash" size={18} color="#000" />
-              <Text style={styles.bannerText}>LOAD COACH'S PLAN: {prescribed[0].title}</Text>
+              <Text style={styles.bannerText}>
+                {todayPrescription.sourceType === "daily" ? "LOAD TODAY'S PLAN" : "LOAD UNSCHEDULED PLAN"}: {visiblePrescription.title}
+              </Text>
             </Pressable>
           )}
 
@@ -284,7 +355,7 @@ export function WorkoutLogScreen() {
                   value={workoutName}
                   onChangeText={setWorkoutName}
                   placeholder="Workout Name"
-                  placeholderTextColor="#444"
+                  placeholderTextColor={colors.textDim}
                 />
               </View>
               <View style={styles.autosavePill}>
@@ -294,15 +365,15 @@ export function WorkoutLogScreen() {
             </View>
             <View style={styles.liveStatsRow}>
               <View style={styles.liveStatBox}>
-                <Typography variant="label" color="#8c8c8c">SETS</Typography>
+                <Typography variant="label" color={colors.textMuted}>SETS</Typography>
                 <Typography variant="metric">{totalSetsCompleted}</Typography>
               </View>
               <View style={styles.liveStatBox}>
-                <Typography variant="label" color="#8c8c8c">VOLUME</Typography>
-                <Typography variant="metric">{totalVolume} <Typography variant="label" color="#444">kg</Typography></Typography>
+                <Typography variant="label" color={colors.textMuted}>VOLUME</Typography>
+                <Typography variant="metric">{totalVolume} <Typography variant="label" color={colors.textDim}>kg</Typography></Typography>
               </View>
               <View style={styles.liveStatBox}>
-                <Typography variant="label" color="#8c8c8c">REST</Typography>
+                <Typography variant="label" color={colors.textMuted}>REST</Typography>
                 <Typography variant="metric" style={styles.restMetric}>
                   {timerActive && restTimeLeft > 0 ? `${Math.floor(restTimeLeft / 60)}:${String(restTimeLeft % 60).padStart(2, "0")}` : "--"}
                 </Typography>
@@ -458,17 +529,17 @@ const styles = StyleSheet.create({
   typeSelectorRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   typePill: { minHeight: 32, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted, borderWidth: 1, borderColor: colors.borderSubtle },
   typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  typePillText: { color: colors.textMuted, ...typography.label, fontSize: 10 },
+  typePillText: { color: colors.textMuted, ...typography.label, fontSize: 11 },
   typePillTextActive: { color: colors.primaryText },
   previousValuesCard: { flexDirection: "row", alignItems: "center", gap: spacing.sm, backgroundColor: colors.surfaceMuted, borderRadius: radius.md, padding: spacing.md, borderWidth: 1, borderColor: colors.borderSubtle, marginBottom: spacing.md },
   previousValuesIcon: { width: 32, height: 32, borderRadius: 12, backgroundColor: colors.primaryMuted, alignItems: "center", justifyContent: "center" },
-  previousValuesLabel: { color: colors.textFaint, ...typography.label, fontSize: 10 },
+  previousValuesLabel: { color: colors.textFaint, ...typography.label, fontSize: 11 },
   previousValuesText: { color: colors.text, ...typography.bodySmall, fontWeight: "700" },
   previousValuesAction: { backgroundColor: colors.primary, borderRadius: radius.pill, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
-  previousValuesActionText: { color: colors.primaryText, ...typography.label, fontSize: 10 },
+  previousValuesActionText: { color: colors.primaryText, ...typography.label, fontSize: 11 },
   tableHeader: { flexDirection: "row", marginBottom: spacing.sm, paddingHorizontal: spacing.sm },
-  columnLabel: { flex: 1, color: colors.textFaint, ...typography.label, fontSize: 10, textAlign: "center" },
-  columnLabelStart: { textAlign: "left" },
+  columnLabel: { flex: 1, color: colors.textFaint, ...typography.label, fontSize: 11, textAlign: "center" },
+  columnLabelStart: { textAlign: I18nManager.isRTL ? "right" : "left" },
   setRow: { minHeight: 48, flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceMuted, borderRadius: radius.md, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, marginBottom: spacing.sm },
   setRowCompleted: { backgroundColor: colors.primaryMuted, borderWidth: 1, borderColor: "rgba(255,204,0,0.28)" },
   setText: { color: colors.textMuted, ...typography.bodySmall, fontWeight: "800", textAlign: "center" },
@@ -483,5 +554,5 @@ const styles = StyleSheet.create({
   dockFinishBtn: { minHeight: 56, borderRadius: radius.lg, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
   videoIconBg: { width: 64, height: 64, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
   videoTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
-  videoSub: { color: "#666", fontSize: 12, fontWeight: "600", marginTop: 2 },
+  videoSub: { color: colors.textMuted, fontSize: 12, fontWeight: "600", marginTop: 2 },
 });

@@ -1,5 +1,6 @@
 import React from "react";
 import { View, StyleSheet, Pressable, Text } from "react-native";
+import { colors } from "../theme/colors";
 
 interface BFRowProps {
   label: string;
@@ -59,11 +60,11 @@ const styles = StyleSheet.create({
   },
   genderTagText: { 
     color: "#fff", 
-    fontSize: 9, 
+    fontSize: 11, 
     fontWeight: "900" 
   },
   bfRowDesc: { 
-    color: "#8c8c8c", 
+    color: colors.textMuted, 
     fontSize: 12, 
     fontWeight: "500" 
   },

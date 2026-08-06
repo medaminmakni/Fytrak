@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontWeight: "900",
     letterSpacing: 2,
-    fontSize: 10,
+    fontSize: 11,
   },
   badge: {
     paddingHorizontal: 10,
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   itemSubtitle: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "600",
     color: colors.textDim,
   },

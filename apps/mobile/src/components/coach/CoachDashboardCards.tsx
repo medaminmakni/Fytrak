@@ -70,7 +70,7 @@ export function ActionQueueCard({
 }) {
     const toneStyles = {
         warning: { borderColor: "#3a2c12", backgroundColor: "#1a1409", color: "#fbbf24" },
-        neutral: { borderColor: "#2c2c2e", backgroundColor: "#161616", color: "#8c8c8c" },
+        neutral: { borderColor: "#2c2c2e", backgroundColor: "#161616", color: colors.borderFaint },
         danger: { borderColor: "#3a1212", backgroundColor: "#1a0d0d", color: "#ff7777" },
     } as const;
 
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     goal: {
-        color: "#8c8c8c",
+        color: colors.textMuted,
         fontSize: 13,
         fontWeight: "500",
     },
@@ -225,9 +225,9 @@ const styles = StyleSheet.create({
         color: "#fff",
     },
     queueLabel: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: "800",
-        color: "#666",
+        color: colors.textMuted,
         textTransform: "uppercase",
         letterSpacing: 0.5,
     },

@@ -4,14 +4,30 @@ import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { type ProgressPhoto } from "../services/userSession";
 
-const HighPerfImage = memo(({ url }: { url: string }) => (
-  <Image
-    source={{ uri: url }}
-    style={styles.gridPhoto}
-    resizeMode="cover"
-    fadeDuration={0}
-  />
-), (prev, next) => prev.url === next.url);
+const isRenderablePhotoUrl = (url: unknown): url is string =>
+  typeof url === "string" && /^https:\/\/[^\s]+$/i.test(url.trim());
+
+const HighPerfImage = memo(({ url }: { url: string }) => {
+  // A document with a missing or blank url would otherwise reach RN as
+  // `uri: undefined`, which renders an unexplained broken tile. Show a neutral
+  // placeholder instead of pretending an image is loading.
+  if (!isRenderablePhotoUrl(url)) {
+    return (
+      <View style={[styles.gridPhoto, styles.gridPhotoMissing]}>
+        <Ionicons name="image-outline" size={20} color={colors.iconFaint} />
+      </View>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri: url }}
+      style={styles.gridPhoto}
+      resizeMode="cover"
+      fadeDuration={0}
+    />
+  );
+}, (prev, next) => prev.url === next.url);
 
 interface PhotoGridItemProps {
   photo: ProgressPhoto;
@@ -39,7 +55,13 @@ export const PhotoGridItem = memo(({
   return (
     <Pressable
       style={[styles.gridPhotoBox, { width, height: width }]}
-      onPress={() => (isSelectionMode || isCompareMode) ? onSelect(photo) : onView(photo.url)}
+      onPress={() => {
+        if (isSelectionMode || isCompareMode) {
+          onSelect(photo);
+        } else if (isRenderablePhotoUrl(photo.url)) {
+          onView(photo.url);
+        }
+      }}
       onLongPress={() => onLongPress(photo)}
       delayLongPress={300}
     >
@@ -62,7 +84,9 @@ export const PhotoGridItem = memo(({
       {!isSelectionMode && !isCompareMode && (
         <View style={styles.gridDateTag}>
           <Text style={styles.gridDateText}>
-            {new Date(photo.date).toLocaleDateString([], { month: "short", day: "numeric" })}
+            {/^\d{4}-\d{2}-\d{2}$/.test(photo.date)
+              ? new Date(`${photo.date}T12:00:00`).toLocaleDateString([], { month: "short", day: "numeric" })
+              : "Unknown date"}
           </Text>
         </View>
       )}
@@ -83,7 +107,12 @@ const styles = StyleSheet.create({
     overflow: "hidden", 
     backgroundColor: "#1c1c1e" 
   },
-  gridPhoto: { 
+  gridPhotoMissing: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.bgDark,
+  },
+  gridPhoto: {
     width: "100%", 
     height: "100%" 
   },
@@ -109,14 +138,14 @@ const styles = StyleSheet.create({
   },
   gridDateText: { 
     color: "#fff", 
-    fontSize: 8, 
+    fontSize: 11, 
     fontWeight: "900", 
     textAlign: "center" 
   },
   badgeLabel: { 
     position: 'absolute', 
     top: 10, 
-    right: 10, 
+    end: 10, 
     backgroundColor: colors.primary, 
     paddingHorizontal: 8, 
     paddingVertical: 4, 
@@ -124,7 +153,7 @@ const styles = StyleSheet.create({
   },
   badgeText: { 
     color: '#000', 
-    fontSize: 8, 
+    fontSize: 11, 
     fontWeight: '900' 
   },
 });

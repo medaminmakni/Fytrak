@@ -108,6 +108,94 @@ export function ProfileHero({
   );
 }
 
+export function CoachProfileHero({
+  profile,
+  name,
+  traineeCount,
+  templateCount,
+  experience,
+  isEditingName,
+  onNameChange,
+  onSaveName,
+  onEditName,
+  onPickImage,
+}: {
+  profile: UserProfile | null;
+  name: string;
+  traineeCount: number;
+  templateCount: number;
+  experience: number;
+  isEditingName: boolean;
+  onNameChange: (value: string) => void;
+  onSaveName: () => void;
+  onEditName: () => void;
+  onPickImage: () => void;
+}) {
+  const initials = (profile?.name || "C").slice(0, 1).toUpperCase();
+  const stats = [
+    { label: "CLIENTS", value: `${traineeCount}` },
+    { label: "TEMPLATES", value: `${templateCount}` },
+    { label: "YEARS EXP", value: `${experience}` },
+  ];
+
+  return (
+    <View style={styles.hero}>
+      <Pressable style={styles.avatarButton} onPress={onPickImage} accessibilityRole="button" accessibilityLabel="Update profile photo">
+        <View style={styles.avatarHaloOuter} />
+        <View style={styles.avatarHaloInner} />
+        {profile?.profileImageUrl ? (
+          <Image source={{ uri: profile.profileImageUrl }} style={styles.avatarImage} />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarInitial}>{initials}</Text>
+          </View>
+        )}
+        <View style={styles.cameraBadge}>
+          <Ionicons name="camera" size={12} color={colors.primaryText} />
+        </View>
+      </Pressable>
+
+      <View style={styles.identityBlock}>
+        {isEditingName ? (
+          <TextInput
+            value={name}
+            onChangeText={onNameChange}
+            onSubmitEditing={onSaveName}
+            onBlur={onSaveName}
+            autoFocus
+            style={styles.nameInput}
+            placeholder="Your name"
+            placeholderTextColor={colors.textDim}
+          />
+        ) : (
+          <Pressable onPress={onEditName} style={styles.nameRow}>
+            <Text numberOfLines={1} style={styles.nameText}>{profile?.name || "Fytrak Coach"}</Text>
+            <View style={styles.editBubble}>
+              <Ionicons name="create-outline" size={14} color={colors.primary} />
+            </View>
+          </Pressable>
+        )}
+
+        <View style={styles.statsRow}>
+          {stats.map((stat, idx) => (
+            <View key={stat.label} style={styles.statItem}>
+              <Text style={styles.statValue}>{stat.value}</Text>
+              <Text style={styles.statLabel}>{stat.label}</Text>
+              {idx < stats.length - 1 ? <View style={styles.statDivider} /> : null}
+            </View>
+          ))}
+        </View>
+
+        <View style={styles.ctaRow}>
+          <Pressable style={[styles.ctaButton, styles.ctaButtonMuted]} onPress={onEditName}>
+            <Text style={styles.ctaText}>Edit profile</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export function ProfileSignalGrid({
   streakDays,
   weeklyWorkouts,
@@ -198,6 +286,22 @@ export function ProfileBioSection({
         </View>
       )}
     </Pressable>
+  );
+}
+
+export function CoachExpertiseSection({ specialties }: { specialties?: string[] }) {
+  if (!specialties || specialties.length === 0) return null;
+  return (
+    <View style={styles.expertiseSection}>
+      <Text style={styles.sectionLabel}>EXPERTISE</Text>
+      <View style={styles.tagGrid}>
+        {specialties.map((s) => (
+          <View key={s} style={styles.tag}>
+            <Text style={styles.tagText}>{s}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -321,13 +425,18 @@ export function ProfileAccountPanel({
   onLogout: () => void;
 }) {
   return (
-    <View style={styles.logoutContainer}>
+    <View style={styles.accountPanel}>
       <Pressable 
-        style={({ pressed }) => [styles.logoutButton, pressed && styles.pressed]} 
+        style={({ pressed }) => [styles.accountButton, pressed && styles.pressed]} 
         onPress={onLogout}
       >
-        <Ionicons name="log-out-outline" size={20} color={colors.danger} />
-        <Text style={styles.logoutButtonText}>Sign out</Text>
+        <View style={styles.accountButtonContent}>
+          <View style={[styles.accountIconBox, { backgroundColor: colors.dangerMuted }]}>
+            <Ionicons name="log-out-outline" size={18} color={colors.danger} />
+          </View>
+          <Text style={[styles.accountButtonText, { color: colors.danger }]}>Sign out</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
       </Pressable>
     </View>
   );
@@ -487,7 +596,7 @@ const styles = StyleSheet.create({
   },
   cameraBadge: {
     position: "absolute",
-    right: 2,
+    end: 2,
     bottom: 2,
     width: 26,
     height: 26,
@@ -554,14 +663,14 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     color: colors.textDim,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 0.8,
   },
   statDivider: {
     position: "absolute",
-    right: 0,
+    end: 0,
     top: 4,
     bottom: 4,
     width: 1,
@@ -684,7 +793,7 @@ const styles = StyleSheet.create({
   },
   ringLabel: {
     color: colors.textMuted,
-    fontSize: 10,
+    fontSize: 11,
     lineHeight: 13,
     fontWeight: "900",
     textTransform: "uppercase",
@@ -726,7 +835,7 @@ const styles = StyleSheet.create({
   },
   miniSignalLabel: {
     color: colors.textDim,
-    fontSize: 9,
+    fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
   },
@@ -826,7 +935,7 @@ const styles = StyleSheet.create({
   },
   metricToggleText: {
     color: colors.textDim,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "800",
   },
   metricToggleTextActive: {
@@ -904,7 +1013,7 @@ const styles = StyleSheet.create({
   },
   actionCopy: {
     flex: 1,
-    marginLeft: spacing.md,
+    marginStart: spacing.md,
   },
   actionTitle: {
     color: colors.text,
@@ -927,5 +1036,66 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: colors.danger,
+  },
+  expertiseSection: {
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  tagGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: spacing.xs,
+  },
+  tag: {
+    backgroundColor: colors.surfaceRaised,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  tagText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  accountPanel: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
+    gap: spacing.sm,
+  },
+  accountButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.bg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  accountButtonContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  accountIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceRaised,
+  },
+  accountButtonText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  accountDivider: {
+    height: 4,
   },
 });

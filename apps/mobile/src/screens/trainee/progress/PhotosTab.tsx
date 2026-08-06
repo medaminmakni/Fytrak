@@ -1,5 +1,7 @@
+import { ViewerBackButton } from "../../../components/ViewerBackButton";
+import { ToastService } from "../../../components/Toast";
 import React, { useState, useCallback, useMemo } from "react";
-import { StyleSheet, View, Pressable, Text, Image, Modal, Dimensions, FlatList, Alert, ActivityIndicator } from "react-native";
+import { StyleSheet, View, Pressable, Text, Image, Modal, Dimensions, FlatList, ActivityIndicator } from "react-native";
 import { colors } from "../../../theme/colors";
 import { spacing } from "../../../theme/tokens";
 import { Typography } from "../../../components/Typography";
@@ -7,7 +9,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { PhotoGridItem } from "../../../components/PhotoGridItem";
 import { ProgressCamera } from "../../../components/ProgressCamera";
 import { CompareSlider } from "../../../components/CompareSlider";
-import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useUserProfile } from "../../../hooks/useUserProfile";
 import { useProgressPhotos } from "../../../hooks/useProgressPhotos";
 import { useNavigation } from "@react-navigation/native";
@@ -18,9 +19,14 @@ const GAP = 8;
 export function PhotosTab() {
   const { width: windowWidth } = Dimensions.get("window");
   const navigation = useNavigation<any>();
-  const uid = useCurrentUser();
   const { profile: userProfile } = useUserProfile();
-  const { photos, handleCapture, handlePickPhoto } = useProgressPhotos();
+  const {
+    photos,
+    isSaving,
+    handleCapture,
+    handlePickPhoto,
+    handleDeleteSelected: deleteSelected,
+  } = useProgressPhotos();
 
   // Photo UI State
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
@@ -30,7 +36,6 @@ export function PhotosTab() {
   const [compareSelection, setCompareSelection] = useState<ProgressPhoto[]>([]);
   const [isCameraVisible, setIsCameraVisible] = useState(false);
   const [activeComparePair, setActiveComparePair] = useState<[ProgressPhoto, ProgressPhoto] | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
   const itemWidth = useMemo(() => Math.floor((windowWidth - (spacing.xl * 2) - (spacing.sm * 2) - (GAP * 2)) / 3), [windowWidth]);
 
@@ -45,7 +50,7 @@ export function PhotosTab() {
         const isAlreadySelected = prev.find(x => x.id === p.id);
         if (isAlreadySelected) return prev.filter(x => x.id !== p.id);
         if (prev.length >= 2) {
-          Alert.alert("Limit Reached", "Select only 2 photos to compare.");
+          ToastService.success("Limit Reached", "Select only 2 photos to compare.");
           return prev;
         }
         return [...prev, p];
@@ -66,23 +71,16 @@ export function PhotosTab() {
     }
   }, [isSelectionMode, isCompareMode]);
 
-  const handleDeleteSelected = async () => {
-    if (!uid || selection.length === 0) return;
-    Alert.alert("Delete Photos", `Delete ${selection.length} photos?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            setIsSaving(true);
-            const { deleteProgressPhoto } = await import("../../../services/userSession");
-            for (const id of selection) await deleteProgressPhoto(uid, id);
-            setSelection([]); setIsSelectionMode(false);
-          } catch (error) { console.error(error); } finally { setIsSaving(false); }
-        }
+  const handleDeleteSelected = () => {
+    deleteSelected(selection, ({ removedIds, failedIds }) => {
+      if (removedIds.length > 0) {
+        setSelection((current) => current.filter((id) => !removedIds.includes(id)));
       }
-    ]);
+      if (failedIds.length === 0) {
+        setSelection([]);
+        setIsSelectionMode(false);
+      }
+    });
   };
 
   const startComparison = () => {
@@ -118,7 +116,7 @@ export function PhotosTab() {
           <Typography variant="h2">
             {isCompareMode ? "SELECT 2 PHOTOS" : isSelectionMode ? `${selection.length} SELECTED` : "Photos"}
           </Typography>
-          <Typography variant="bodySmall" color="#666">
+          <Typography variant="bodySmall" color={colors.textMuted}>
             {isCompareMode ? "Pick snapshots to compare" : isSelectionMode ? "Tap to select more" : "Visual transformation logs"}
           </Typography>
         </View>
@@ -135,14 +133,16 @@ export function PhotosTab() {
               <Pressable style={styles.actionBtn} onPress={() => setIsCompareMode(true)}>
                 <Ionicons name="git-compare-outline" size={20} color={colors.primary} />
               </Pressable>
-              <Pressable style={styles.addBtn} onPress={handlePickPhoto}>
+              <Pressable style={styles.addBtn} disabled={isSaving} onPress={() => handlePickPhoto(() => setIsCameraVisible(true))}>
                 <Ionicons name="add" size={24} color="#000" />
               </Pressable>
             </>
           )}
           {isSelectionMode && (
-            <Pressable style={styles.deleteBtn} onPress={handleDeleteSelected}>
-              <Ionicons name="trash-outline" size={20} color="#ff4444" />
+            <Pressable style={styles.deleteBtn} disabled={isSaving} onPress={handleDeleteSelected}>
+              {isSaving
+                ? <ActivityIndicator size="small" color="#ff4444" />
+                : <Ionicons name="trash-outline" size={20} color="#ff4444" />}
             </Pressable>
           )}
           {isCompareMode && compareSelection.length === 2 && (
@@ -184,14 +184,9 @@ export function PhotosTab() {
         )}
       />
 
-      <Pressable style={styles.fab} onPress={() => setIsCameraVisible(true)}>
+      <Pressable style={styles.fab} disabled={isSaving} onPress={() => setIsCameraVisible(true)}>
         <Ionicons name="camera" size={28} color="#000" />
       </Pressable>
-
-      <View style={styles.infoBox}>
-        <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
-        <Text style={styles.infoText}>Your photos are private and encrypted.</Text>
-      </View>
 
       {/* MODALS */}
       <Modal visible={!!activeComparePair} transparent={false} animationType="slide" onRequestClose={() => setActiveComparePair(null)}>
@@ -210,15 +205,16 @@ export function PhotosTab() {
         <ProgressCamera
           onClose={() => setIsCameraVisible(false)}
           onCapture={handleCameraCapture}
-          overlayUri={photos.length > 0 ? photos[0].url : undefined}
+          overlayUri={photos[0]?.url && /^https:\/\/[^\s]+$/i.test(photos[0].url) ? photos[0].url : undefined}
         />
       </Modal>
 
       <Modal visible={!!selectedPhoto} transparent={true} animationType="fade" onRequestClose={() => setSelectedPhoto(null)}>
         <View style={styles.viewerOverlay}>
-          <Pressable style={styles.viewerClose} onPress={() => setSelectedPhoto(null)}>
-            <Ionicons name="close" size={28} color="#ff4444" />
-          </Pressable>
+          <ViewerBackButton
+            onPress={() => setSelectedPhoto(null)}
+            accessibilityLabel="Back to photos"
+          />
           {selectedPhoto && (
             <View style={styles.viewerContent}>
               <Image source={{ uri: selectedPhoto }} style={styles.viewerImage} resizeMode="contain" />
@@ -309,7 +305,7 @@ const styles = StyleSheet.create({
     padding: 40,
   },
   emptyText: {
-    color: "#444",
+    color: colors.textDim,
     textAlign: "center",
     fontSize: 14,
     fontWeight: "600",
@@ -352,7 +348,7 @@ const styles = StyleSheet.create({
     borderColor: "#333",
   },
   vaultLockedDesc: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 13,
     textAlign: "center",
     lineHeight: 20,
@@ -377,7 +373,7 @@ const styles = StyleSheet.create({
   fab: {
     position: "absolute",
     bottom: 100,
-    right: 30,
+    end: 30,
     width: 64,
     height: 64,
     borderRadius: 32,
@@ -391,37 +387,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     zIndex: 10,
   },
-  infoBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 12,
-    gap: 8,
-  },
-  infoText: {
-    color: "#444",
-    fontSize: 11,
-    fontWeight: "600",
-  },
   viewerOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.95)",
     justifyContent: "center",
   },
-  viewerClose: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255, 68, 68, 0.25)",
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: "rgba(255, 68, 68, 0.6)",
-    zIndex: 100,
-  },
+  // viewerClose removed — ViewerBackButton owns the dismiss control now.
   viewerContent: {
     flex: 1,
     alignItems: "center",

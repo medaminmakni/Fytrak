@@ -3,10 +3,12 @@ import { View, StyleSheet, Text, Pressable, Animated, Easing, TextInput } from '
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { Typography } from './Typography';
+import { Surface } from './Surface';
 import * as Haptics from 'expo-haptics';
 import { saveWaterIntake, setWaterIntake } from '../services/waterService';
 import { useDailyWater } from '../hooks/useDailyWater';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import { useUserProfile } from '../hooks/useUserProfile';
 
 type Props = {
   onLog?: (amount: number) => void;
@@ -14,7 +16,8 @@ type Props = {
 
 export function WaterTracker({ onLog }: Props) {
   const uid = useCurrentUser();
-  const ml = useDailyWater();
+  const { profile } = useUserProfile();
+  const ml = useDailyWater(profile?.timezone);
   const [customAmount, setCustomAmount] = useState("");
   const target = 2500;
   const progress = Math.min(ml / target, 1);
@@ -35,7 +38,7 @@ export function WaterTracker({ onLog }: Props) {
 
   const handleAdd = async (amount: number) => {
     if (!uid) return;
-    await saveWaterIntake(uid, amount);
+    await saveWaterIntake(uid, amount, profile?.timezone);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (onLog) onLog(amount);
   };
@@ -48,7 +51,7 @@ export function WaterTracker({ onLog }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <Surface>
       <View style={styles.header}>
         <View style={styles.titleRow}>
            <Ionicons name="water" size={18} color="#60a5fa" />
@@ -56,7 +59,7 @@ export function WaterTracker({ onLog }: Props) {
         </View>
         <View style={styles.statsCol}>
            <Typography variant="label" color="#fff" style={{ fontSize: 14, fontWeight: "900" }}>{ml} ml</Typography>
-           <Typography variant="label" color="#444">of {target}ml goal</Typography>
+           <Typography variant="label" color={colors.textDim}>of {target}ml goal</Typography>
         </View>
       </View>
 
@@ -67,7 +70,7 @@ export function WaterTracker({ onLog }: Props) {
                   <View style={styles.waveEffect} />
                </View>
                <View style={styles.glassOverlay}>
-                  <Typography variant="h2" style={{ color: progress > 0.5 ? '#fff' : '#444' }}>{Math.round(progress * 100)}%</Typography>
+                  <Typography variant="h2" style={{ color: progress > 0.5 ? '#fff' : colors.textDim }}>{Math.round(progress * 100)}%</Typography>
                </View>
             </View>
          </View>
@@ -86,7 +89,7 @@ export function WaterTracker({ onLog }: Props) {
                <TextInput 
                   style={styles.customInput}
                   placeholder="Custom ml..."
-                  placeholderTextColor="#444"
+                  placeholderTextColor={colors.textDim}
                   keyboardType="numeric"
                   value={customAmount}
                   onChangeText={setCustomAmount}
@@ -96,23 +99,16 @@ export function WaterTracker({ onLog }: Props) {
                </Pressable>
             </View>
 
-            <Pressable style={styles.resetBtn} onPress={() => uid && setWaterIntake(uid, 0)}>
-               <Typography variant="label" color="#ff4444" style={{ fontSize: 10, fontWeight: "900" }}>RESET PROGRESS</Typography>
+            <Pressable style={styles.resetBtn} onPress={() => uid && setWaterIntake(uid, 0, profile?.timezone)}>
+               <Typography variant="label" color="#ff4444" style={{ fontSize: 11, fontWeight: "900" }}>RESET PROGRESS</Typography>
             </Pressable>
          </View>
       </View>
-    </View>
+    </Surface>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: '#111',
-    borderRadius: 32,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#1c1c1e',
-  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',

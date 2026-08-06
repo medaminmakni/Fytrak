@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, Pressable, TextInput, StyleSheet } from "react-native";
+import { I18nManager, View, Text, Pressable, TextInput, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { typography } from "../theme/tokens";
@@ -46,7 +46,7 @@ export function WorkoutExerciseCard({
       <View style={styles.exerciseHeader}>
         <View style={styles.exerciseNameRow}>
           <Pressable style={styles.exerciseNameInput} onPress={onSearchExercise}>
-            <Text style={{ color: ex.name ? colors.primary : "#444", ...typography.heading }}>
+            <Text style={{ color: ex.name ? colors.primary : colors.textDim, ...typography.heading }}>
               {ex.name || "Tap to select exercise..."}
             </Text>
           </Pressable>
@@ -155,17 +155,17 @@ const styles = StyleSheet.create({
   typeSelectorRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   typePill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
   typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  typePillText: { color: "#8c8c8c", fontSize: 10, fontWeight: "800" },
+  typePillText: { color: colors.textMuted, fontSize: 11, fontWeight: "800" },
   typePillTextActive: { color: "#000" },
   tableHeader: { flexDirection: "row", marginBottom: 12, paddingHorizontal: 12, alignItems: "center" },
-  columnLabel: { flex: 1, color: "#666", fontSize: 11, fontWeight: "900", textAlign: "center", letterSpacing: 0.5 },
-  columnLabelStart: { textAlign: "left" },
+  columnLabel: { flex: 1, color: colors.textMuted, fontSize: 11, fontWeight: "900", textAlign: "center", letterSpacing: 0.5 },
+  columnLabelStart: { textAlign: I18nManager.isRTL ? "right" : "left" },
   addSetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8, paddingVertical: 12, backgroundColor: "#1c1c1e", borderRadius: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#333" },
   addSetText: { color: colors.primary, fontSize: 12, fontWeight: "800" },
   previousValuesCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 16, padding: 12, marginBottom: 16, gap: 12, borderWidth: 1, borderColor: "#2c2c2e", borderLeftWidth: 3, borderLeftColor: colors.primary },
   previousValuesIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary + "20", alignItems: "center", justifyContent: "center" },
-  previousValuesLabel: { color: colors.primary, fontSize: 9, fontWeight: "900", letterSpacing: 0.5, marginBottom: 2 },
+  previousValuesLabel: { color: colors.primary, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, marginBottom: 2 },
   previousValuesText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
   previousValuesAction: { backgroundColor: "#2c2c2e", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  previousValuesActionText: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  previousValuesActionText: { color: "#fff", fontSize: 11, fontWeight: "800" },
 });

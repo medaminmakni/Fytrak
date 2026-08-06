@@ -19,6 +19,9 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
   const [coachEmail, setCoachEmail] = useState("");
   const [introMessage, setIntroMessage] = useState("");
   const [selectedCoachId, setSelectedCoachId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requestSentName, setRequestSentName] = useState<string | null>(null);
+  const [errorText, setErrorText] = useState<string | null>(null);
 
   const [coachesList, setCoachesList] = useState<Coach[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -51,20 +54,40 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
   const selectedCoach = useMemo(() => {
     if (mode === "invite") {
       return {
-        id: coachCode || coachEmail || "manual-invite",
-        name: coachEmail || coachCode || "Invited coach",
+        id: coachCode.trim(),
+        name: "Invited coach",
       };
     }
     const found = coachesList.find((coach) => coach.id === selectedCoachId);
     return found ? { id: found.id, name: found.name } : null;
-  }, [coachCode, coachEmail, coachesList, mode, selectedCoachId]);
+  }, [coachCode, coachesList, mode, selectedCoachId]);
 
   const canSubmit = useMemo(() => {
     if (mode === "invite") {
-      return coachCode.trim().length > 0 || coachEmail.trim().length > 0;
+      return coachCode.trim().length > 0;
     }
     return Boolean(selectedCoachId);
   }, [coachCode, coachEmail, mode, selectedCoachId]);
+
+  const handleSendRequest = async () => {
+    if (!selectedCoach || isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      setErrorText(null);
+      await onSendRequest(selectedCoach);
+      setRequestSentName(selectedCoach.name);
+    } catch (error) {
+      console.error("Failed to send coach request:", error);
+      setErrorText(
+        mode === "invite"
+          ? "Could not send this request. Make sure the coach ID is correct."
+          : "Could not send this request. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <ScreenShell
@@ -72,7 +95,17 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
       subtitle="The fastest way to reach your goals"
       contentStyle={styles.shellContent}
     >
-      {isLoading ? (
+      {requestSentName ? (
+        <View style={styles.requestSentCard}>
+          <View style={styles.requestSentIcon}>
+            <Ionicons name="hourglass-outline" size={28} color={colors.primary} />
+          </View>
+          <Text style={styles.requestSentTitle}>Request Sent</Text>
+          <Text style={styles.requestSentText}>
+            Waiting for {requestSentName} to approve your coaching request. You can keep logging workouts, meals, and progress while you wait.
+          </Text>
+        </View>
+      ) : isLoading ? (
         <View style={styles.loader}>
           <ActivityIndicator color={colors.primary} size="large" />
           <Text style={styles.loaderText}>Curating top experts...</Text>
@@ -99,14 +132,14 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
               style={[styles.tab, mode === "discover" && styles.tabActive]}
               onPress={() => setMode("discover")}
             >
-              <Ionicons name="compass" size={16} color={mode === "discover" ? "#000" : "#8c8c8c"} />
+              <Ionicons name="compass" size={16} color={mode === "discover" ? "#000" : colors.textMuted} />
               <Text style={[styles.tabText, mode === "discover" && styles.tabTextActive]}>Discover</Text>
             </Pressable>
             <Pressable
               style={[styles.tab, mode === "invite" && styles.tabActive]}
               onPress={() => setMode("invite")}
             >
-              <Ionicons name="mail-open" size={16} color={mode === "invite" ? "#000" : "#8c8c8c"} />
+              <Ionicons name="mail-open" size={16} color={mode === "invite" ? "#000" : colors.textMuted} />
               <Text style={[styles.tabText, mode === "invite" && styles.tabTextActive]}>Invite</Text>
             </Pressable>
           </View>
@@ -114,10 +147,10 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
           {mode === "discover" ? (
             <>
               <View style={styles.searchBox}>
-                <Ionicons name="search" size={20} color="#8c8c8c" />
+                <Ionicons name="search" size={20} color={colors.textMuted} />
                 <TextInput
                   placeholder="Search coaches..."
-                  placeholderTextColor="#8c8c8c"
+                  placeholderTextColor={colors.textMuted}
                   style={styles.searchInput}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
@@ -175,11 +208,11 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
                           <Text style={styles.specialties}>{coach.specialties.join(", ")}</Text>
                           <View style={styles.metaRow}>
                             <View style={styles.metaItem}>
-                              <Ionicons name="time-outline" size={14} color="#8c8c8c" />
+                              <Ionicons name="time-outline" size={14} color={colors.textMuted} />
                               <Text style={styles.metaText}>{coach.responseTime}</Text>
                             </View>
                             <View style={styles.metaItem}>
-                              <Ionicons name="people-outline" size={14} color="#8c8c8c" />
+                              <Ionicons name="people-outline" size={14} color={colors.textMuted} />
                               <Text style={styles.metaText}>{coach.clients}+ clients</Text>
                             </View>
                           </View>
@@ -199,10 +232,10 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
           ) : (
             <View style={styles.inviteForm}>
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>Direct Invite Code</Text>
+                <Text style={styles.label}>Coach ID</Text>
                 <TextInput
-                  placeholder="Enter 6-digit coach code"
-                  placeholderTextColor="#8c8c8c"
+                  placeholder="Enter the exact coach ID"
+                  placeholderTextColor={colors.textMuted}
                   style={styles.input}
                   value={coachCode}
                   onChangeText={setCoachCode}
@@ -210,7 +243,7 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
               </View>
               <View style={styles.dividerBox}>
                 <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR</Text>
+                <Text style={styles.dividerText}>EMAIL LOOKUP COMING LATER</Text>
                 <View style={styles.dividerLine} />
               </View>
               <View style={styles.inputGroup}>
@@ -218,11 +251,12 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
                 <TextInput
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  placeholder="coach@example.com"
-                  placeholderTextColor="#8c8c8c"
-                  style={styles.input}
+                  placeholder="Use discover or enter coach ID for now"
+                  placeholderTextColor={colors.textMuted}
+                  style={[styles.input, styles.disabledInput]}
                   value={coachEmail}
                   onChangeText={setCoachEmail}
+                  editable={false}
                 />
               </View>
             </View>
@@ -233,20 +267,21 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
             <TextInput
               multiline
               placeholder="Hi coach, I'm ready to transform my physique..."
-              placeholderTextColor="#8c8c8c"
+              placeholderTextColor={colors.textMuted}
               style={[styles.input, styles.messageInput]}
               value={introMessage}
               onChangeText={setIntroMessage}
             />
 
             <Pressable
-              style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
-              disabled={!canSubmit}
-              onPress={() => selectedCoach && onSendRequest(selectedCoach)}
+              style={[styles.submitBtn, (!canSubmit || isSubmitting) && styles.submitBtnDisabled]}
+              disabled={!canSubmit || isSubmitting}
+              onPress={() => void handleSendRequest()}
             >
-              <Text style={styles.submitBtnText}>SEND REQUEST</Text>
+              {isSubmitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.submitBtnText}>SEND REQUEST</Text>}
               <Ionicons name="arrow-forward" size={18} color={colors.primaryText} />
             </Pressable>
+            {errorText ? <Text style={styles.errorText}>{errorText}</Text> : null}
           </View>
         </ScrollView>
       )}
@@ -265,7 +300,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   loaderText: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -294,7 +329,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   tabText: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontWeight: "700",
     fontSize: 14,
   },
@@ -348,7 +383,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   chipText: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -384,7 +419,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   emptyText: {
-    color: "#444",
+    color: colors.textDim,
     fontSize: 14,
     textAlign: "center",
     fontWeight: "600",
@@ -421,7 +456,7 @@ const styles = StyleSheet.create({
   verifiedIcon: {
     position: "absolute",
     bottom: 0,
-    right: 0,
+    end: 0,
     backgroundColor: colors.primary,
     width: 18,
     height: 18,
@@ -460,7 +495,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   specialties: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 13,
     fontWeight: "500",
   },
@@ -475,12 +510,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   metaText: {
-    color: "#8c8c8c",
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: "600",
   },
   selectedMarker: {
-    marginLeft: 4,
+    marginStart: 4,
   },
   inviteForm: {
     gap: 20,
@@ -498,7 +533,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800",
     letterSpacing: 0.5,
-    marginLeft: 2,
+    marginStart: 2,
     textTransform: "uppercase",
   },
   input: {
@@ -509,6 +544,9 @@ const styles = StyleSheet.create({
     color: "#000000",
     fontSize: 15,
     fontWeight: "600",
+  },
+  disabledInput: {
+    opacity: 0.55,
   },
   dividerBox: {
     flexDirection: "row",
@@ -522,7 +560,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#2c2c2e",
   },
   dividerText: {
-    color: "#444",
+    color: colors.textDim,
     fontSize: 11,
     fontWeight: "900",
   },
@@ -563,5 +601,41 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 16,
     letterSpacing: 1,
+  },
+  requestSentCard: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    paddingHorizontal: 28,
+    paddingBottom: 80,
+  },
+  requestSentIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    backgroundColor: "#1c1c1e",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#2c2c2e",
+  },
+  requestSentTitle: {
+    color: "#ffffff",
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  requestSentText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: "600",
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  errorText: {
+    color: "#ff4444",
+    fontSize: 13,
+    fontWeight: "700",
+    textAlign: "center",
   },
 });

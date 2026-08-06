@@ -89,7 +89,7 @@ export function ExerciseDetailSheet({ exercise, isVisible, onClose, primaryActio
               ) : (
                 <View style={styles.videoPlaceholder}>
                   <Ionicons name="videocam-off" size={48} color="#333" />
-                  <Typography variant="label" color="#444">No video available</Typography>
+                  <Typography variant="label" color={colors.textDim}>No video available</Typography>
                 </View>
               )}
             </View>
@@ -114,7 +114,7 @@ export function ExerciseDetailSheet({ exercise, isVisible, onClose, primaryActio
                     </View>
                   ))
                 ) : (
-                  <Typography variant="label" color="#666">No instructions provided for this exercise.</Typography>
+                  <Typography variant="label" color={colors.textMuted}>No instructions provided for this exercise.</Typography>
                 )}
               </View>
 
@@ -124,7 +124,7 @@ export function ExerciseDetailSheet({ exercise, isVisible, onClose, primaryActio
                    <Ionicons name="body" size={32} color={colors.primary} />
                    <View style={styles.muscleInfo}>
                       <Typography variant="h2" style={{ fontSize: 16 }}>Primary: {exercise.muscleGroup}</Typography>
-                      <Typography variant="label" color="#8c8c8c">Mechanics: {exercise.mechanicsType || 'N/A'}</Typography>
+                      <Typography variant="label" color={colors.textMuted}>Mechanics: {exercise.mechanicsType || 'N/A'}</Typography>
                    </View>
                 </View>
               </View>
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingLeft: 4,
+    paddingStart: 4,
   },
   videoCaption: {
     position: 'absolute',
@@ -247,12 +247,12 @@ const styles = StyleSheet.create({
   },
   pillText: {
     color: '#000',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
   },
   secondaryPillText: {
     color: '#d6d6d6',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
   },
   body: {
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     position: 'absolute',
     top: 18,
-    right: 18,
+    end: 18,
     width: 44,
     height: 44,
     borderRadius: 22,

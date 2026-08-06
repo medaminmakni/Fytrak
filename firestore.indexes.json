@@ -45,6 +45,15 @@
       ]
     },
     {
+      "collectionGroup": "chatThreads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "participants", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "workouts",
       "queryScope": "COLLECTION",
       "fields": [
@@ -76,6 +85,25 @@
         { "fieldPath": "selectedCoachId", "order": "ASCENDING" },
         { "fieldPath": "assignmentStatus", "order": "ASCENDING" },
         { "fieldPath": "clientSummary.updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "//": "sweepDailyReportsToPending. Every dailyReports document is created with reviewStatus and reviewAvailableAt in the same write — Firestore excludes documents missing an ordered field, so these must never be added by backfill.",
+      "collectionGroup": "dailyReports",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "reviewStatus", "order": "ASCENDING" },
+        { "fieldPath": "reviewAvailableAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "//": "Coach pending-review queue, one listener for the whole roster instead of one per client.",
+      "collectionGroup": "dailyReports",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "coachId", "order": "ASCENDING" },
+        { "fieldPath": "reviewStatus", "order": "ASCENDING" },
+        { "fieldPath": "clientDateKey", "order": "DESCENDING" }
       ]
     }
   ],

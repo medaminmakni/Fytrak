@@ -13,30 +13,30 @@ import { useDailyNutrition } from "../../../hooks/useDailyNutrition";
 import { useUserProfile } from "../../../hooks/useUserProfile";
 import { useDailyWater } from "../../../hooks/useDailyWater";
 import { useProgressPhotos } from "../../../hooks/useProgressPhotos";
-import { toSafeDate } from "../../../utils/chartFilters";
+import { useClientDateKey } from "../../../hooks/useClientDateKey";
 
 export function DailyTab() {
   const workouts = useWorkouts();
   const { metrics } = useBodyMetrics();
-  const meals = useDailyNutrition();
   const { profile: userProfile } = useUserProfile();
-  const waterMl = useDailyWater();
+  const meals = useDailyNutrition(userProfile?.timezone);
+  const waterMl = useDailyWater(userProfile?.timezone);
   const { photos } = useProgressPhotos();
 
-  const todayStr = new Date().toDateString();
-  const todayKey = new Date().toISOString().split('T')[0];
+  // One client-timezone date source for every section on the screen.
+  const todayKey = useClientDateKey(userProfile?.timezone);
 
   const todayWorkout = useMemo(() => {
-    return workouts.find(w => w.createdAt && toSafeDate(w.createdAt).toDateString() === todayStr);
-  }, [workouts, todayStr]);
+    return workouts.find(w => w.date === todayKey);
+  }, [workouts, todayKey]);
 
   const todayPhoto = useMemo(() => {
     return photos.find(p => p.date === todayKey);
   }, [photos, todayKey]);
 
   const todayMetric = useMemo(() => {
-    return metrics.find(m => m.date === new Date().toISOString().split('T')[0] || (m.createdAt && toSafeDate(m.createdAt).toDateString() === todayStr));
-  }, [metrics, todayStr]);
+    return metrics.find(m => m.date === todayKey);
+  }, [metrics, todayKey]);
 
   const totals = useMemo(() => {
     return meals.reduce(
@@ -50,7 +50,11 @@ export function DailyTab() {
     );
   }, [meals]);
 
-  const targets = userProfile?.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 };
+  // Never invent targets. A trainee with no plan yet was previously shown a
+  // hardcoded 2100/160/220/65 as though their coach had set it, so their rings
+  // measured adherence against a number nobody chose.
+  const hasTargets = Boolean(userProfile?.macroTargets);
+  const targets = userProfile?.macroTargets ?? { calories: 0, protein: 0, carbs: 0, fats: 0 };
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -67,11 +71,12 @@ export function DailyTab() {
       </View>
 
       <View style={styles.section}>
-        <DailyNutritionReport 
-          meals={meals} 
-          targets={targets} 
-          totals={totals} 
-          waterMl={waterMl} 
+        <DailyNutritionReport
+          meals={meals}
+          targets={targets}
+          totals={totals}
+          waterMl={waterMl}
+          hasTargets={hasTargets}
         />
       </View>
 
@@ -117,7 +122,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontWeight: "900",
     letterSpacing: 2,
-    fontSize: 10,
+    fontSize: 11,
   },
   mainTitle: {
     fontSize: 24,

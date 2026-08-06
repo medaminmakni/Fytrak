@@ -3,6 +3,7 @@ import { View, StyleSheet, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { radius, spacing } from "../../../theme/tokens";
 import type { BodyMetric, WorkoutLog } from "../../../types/domain";
+import { colors } from "../../../theme/colors";
 
 type DailyBiomarkersReportProps = {
   todayMetric?: BodyMetric;
@@ -64,11 +65,11 @@ function MetricBox({ label, value, icon, color }: { label: string; value: string
 
 const styles = StyleSheet.create({
   section: { gap: spacing.md, marginBottom: spacing.xl },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginLeft: 4 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginStart: 4 },
   sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   metricsGrid: { flexDirection: 'row', gap: spacing.md },
   metricBox: { flex: 1, backgroundColor: "#111", borderRadius: radius.lg, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: "#222" },
   metricIconBg: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  metricLabel: { color: "#666", fontSize: 10, fontWeight: "800", letterSpacing: 0.5, marginBottom: 2 },
+  metricLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "800", letterSpacing: 0.5, marginBottom: 2 },
   metricValue: { color: "#fff", fontSize: 16, fontWeight: "900" },
 });

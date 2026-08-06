@@ -1,39 +1,87 @@
-import { View, Text, StyleSheet, Image, Pressable, Dimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { AppLogo } from '../../components/Branding';
-import { colors } from '../../theme/colors';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '../../theme/colors';
+import { spacing, radius, touchTarget } from '../../theme/tokens';
 
-const { width, height } = Dimensions.get('window');
+type WelcomeScreenProps = {
+  /** Primary path: create an account. */
+  onStart: () => void;
+  /** Returning user. Falls back to onStart until the route is wired. */
+  onSignIn?: () => void;
+  /** Coach signing up. Falls back to onStart until the route is wired. */
+  onCoachStart?: () => void;
+};
 
-export function WelcomeScreen({ onStart }: { onStart: () => void }) {
+/**
+ * First screen. Built to the approved redesign frame.
+ *
+ * Content sits at the bottom because that is where thumbs are, and it is flush
+ * left rather than centred so the headline reads as a statement instead of a
+ * poster. One sentence of promise, then three destinations ranked by how
+ * likely each is — a returning user and a coach previously had to enter the
+ * signup flow and find their way back out.
+ *
+ * Sentence case, no letter-spacing: both are Latin-only emphasis devices.
+ * Arabic has no letter case, and tracking breaks its cursive joins.
+ */
+export function WelcomeScreen({ onStart, onSignIn, onCoachStart }: WelcomeScreenProps) {
+  const insets = useSafeAreaInsets();
+
+  const handleSignIn = onSignIn ?? onStart;
+  const handleCoachStart = onCoachStart ?? onStart;
+
   return (
-    <View style={styles.container}>
-      {/* BACKGROUND IMAGE - GRITTY GYM AESTHETIC */}
-      <Image
-        source={require('../../../assets/branding/welcome_bg.png')}
-        style={styles.bgImage}
-        resizeMode="cover"
-      />
-
-      {/* GRADIENT OVERLAY */}
-      <View style={styles.overlay} />
-
-      <SafeAreaView style={styles.content}>
-        <View style={styles.topSection}>
-          <AppLogo width={width * 0.8} height={200} />
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: insets.bottom + spacing.xl },
+      ]}
+    >
+      <View style={styles.block}>
+        <View style={styles.mark}>
+          <Ionicons name="barbell" size={30} color={colors.primaryText} />
         </View>
 
-        <View style={styles.bottomSection}>
-          <Text style={styles.tagline}>TRANSFORM YOUR BODY</Text>
-          <Text style={styles.subtext}>A professional companion for your fitness journey.</Text>
+        <Text style={styles.headline} accessibilityRole="header">
+          Train with a real coach.
+        </Text>
 
-          <Pressable style={styles.button} onPress={onStart}>
-            <Text style={styles.buttonText}>Get started</Text>
-            <Ionicons name="arrow-forward" size={20} color="#000" />
+        <Text style={styles.sub}>
+          Programmes written for you, adjusted every week by someone who sees
+          your numbers.
+        </Text>
+
+        <View style={styles.actions}>
+          <Pressable
+            style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
+            onPress={onStart}
+            accessibilityRole="button"
+            accessibilityLabel="Create an account"
+          >
+            <Text style={styles.primaryText}>Create an account</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.secondary, pressed && styles.pressed]}
+            onPress={handleSignIn}
+            accessibilityRole="button"
+            accessibilityLabel="Sign in to an existing account"
+          >
+            <Text style={styles.secondaryText}>I already have one</Text>
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [styles.tertiary, pressed && styles.pressed]}
+            onPress={handleCoachStart}
+            accessibilityRole="button"
+            accessibilityLabel="Sign up as a coach"
+            hitSlop={8}
+          >
+            <Text style={styles.tertiaryText}>I'm a coach</Text>
           </Pressable>
         </View>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -41,58 +89,78 @@ export function WelcomeScreen({ onStart }: { onStart: () => void }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: colors.bg,
+    paddingHorizontal: spacing.xl,
+    // Everything is anchored to the bottom; the empty space above is doing
+    // work, not going to waste.
+    justifyContent: 'flex-end',
   },
-  bgImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: width,
-    height: height,
+  block: {
+    gap: spacing.md,
   },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  content: {
-    flex: 1,
-    justifyContent: 'space-between',
-    padding: 24,
-  },
-  topSection: {
-    alignItems: 'center',
-    marginTop: 100, // Move logo lower
-  },
-  bottomSection: {
-    gap: 16,
-    paddingBottom: 40,
-  },
-  tagline: {
-    fontFamily: 'Adcure', // Brand font
-    color: colors.primary, // Brand yellow
-    fontSize: 32,
-    letterSpacing: 2,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-  },
-  subtext: {
-    color: '#333', // Dark grey/black subtext
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 24,
-    fontWeight: '500',
-  },
-  button: {
+  mark: {
+    width: 56,
+    height: 56,
+    borderRadius: radius.md,
     backgroundColor: colors.primary,
-    height: 64,
-    borderRadius: 32,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    marginBottom: spacing.xs,
   },
-  buttonText: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: '900',
-    letterSpacing: 1,
+  headline: {
+    color: colors.text,
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '800',
+  },
+  sub: {
+    color: colors.textMuted,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: spacing.md,
+  },
+  actions: {
+    gap: spacing.md,
+  },
+  primary: {
+    backgroundColor: colors.primary,
+    minHeight: 56,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  primaryText: {
+    color: colors.primaryText,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  secondary: {
+    backgroundColor: colors.surface,
+    minHeight: 56,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  secondaryText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  tertiary: {
+    // A bare Text has no reliable tap area; this guarantees the 44px minimum
+    // even though the label is short.
+    minHeight: touchTarget.min,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tertiaryText: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  pressed: {
+    opacity: 0.85,
   },
 });

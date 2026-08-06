@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../../../components/Typography";
 import { colors } from "../../../theme/colors";
@@ -19,6 +19,7 @@ type WorkoutCheckInViewProps = {
   onMoodChange: (value: number) => void;
   onSubmit: () => void;
   onBack: () => void;
+  isSubmitting?: boolean;
 };
 
 export function WorkoutCheckInView({
@@ -35,6 +36,7 @@ export function WorkoutCheckInView({
   onMoodChange,
   onSubmit,
   onBack,
+  isSubmitting,
 }: WorkoutCheckInViewProps) {
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -102,11 +104,23 @@ export function WorkoutCheckInView({
         </View>
       </View>
 
-      <Pressable style={styles.finishBtn} onPress={onSubmit}>
-        <Text style={styles.finishBtnText}>SUBMIT LOG</Text>
-        <Ionicons name="cloud-upload" size={20} color={colors.primaryText} />
+      <Pressable
+        style={[styles.finishBtn, isSubmitting && styles.finishBtnDisabled]}
+        onPress={onSubmit}
+        disabled={isSubmitting}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: !!isSubmitting, busy: !!isSubmitting }}
+      >
+        {isSubmitting ? (
+          <ActivityIndicator color={colors.primaryText} />
+        ) : (
+          <>
+            <Text style={styles.finishBtnText}>SUBMIT LOG</Text>
+            <Ionicons name="cloud-upload" size={20} color={colors.primaryText} />
+          </>
+        )}
       </Pressable>
-      <Pressable style={styles.cancelLink} onPress={onBack}>
+      <Pressable style={styles.cancelLink} onPress={onBack} disabled={isSubmitting}>
         <Text style={styles.cancelLinkText}>Back to workout</Text>
       </Pressable>
     </ScrollView>
@@ -179,7 +193,7 @@ const styles = StyleSheet.create({
   completionValue: { color: colors.text, fontSize: 20, fontWeight: "900" },
   completionLabel: {
     color: colors.textMuted,
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
     marginTop: spacing.xs,
@@ -231,7 +245,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   emojiCircleActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  moodText: { color: colors.textMuted, ...typography.label, fontSize: 10 },
+  moodText: { color: colors.textMuted, ...typography.label, fontSize: 11 },
   moodTextActive: { color: colors.primaryText },
   finishBtn: {
     backgroundColor: colors.primary,
@@ -242,6 +256,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.md,
   },
+  finishBtnDisabled: { opacity: 0.6 },
   finishBtnText: { color: colors.primaryText, ...typography.button, fontSize: 16 },
   cancelLink: { alignItems: "center", paddingVertical: spacing.lg },
   cancelLinkText: { color: colors.textFaint, fontWeight: "700" },

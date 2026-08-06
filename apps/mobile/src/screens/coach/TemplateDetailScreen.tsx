@@ -1,3 +1,4 @@
+import { ToastService } from "../../components/Toast";
 import { useEffect, useState } from "react";
 import {
     StyleSheet,
@@ -5,7 +6,6 @@ import {
     View,
     ScrollView,
     Pressable,
-    Alert,
     ActivityIndicator,
     Modal,
     TextInput
@@ -21,7 +21,7 @@ import { CoachTemplate, subscribeToCoachTrainees, savePrescribedWorkout, savePre
 export function TemplateDetailScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { templateId, type } = route.params;
+    const { templateId = "", type = "workout" } = route.params ?? {};
 
     const [template, setTemplate] = useState<CoachTemplate | null>(null);
     const [trainees, setTrainees] = useState<any[]>([]);
@@ -42,7 +42,7 @@ export function TemplateDetailScreen() {
                 }
             } catch (error) {
                 console.error(error);
-                Alert.alert("Error", "Could not load template details.");
+                ToastService.error("Error", "Could not load template details.");
             } finally {
                 setIsLoading(false);
             }
@@ -71,7 +71,7 @@ export function TemplateDetailScreen() {
                     exercises: template.data.exercises,
                     isCompleted: false
                 });
-                Alert.alert("Success", `Routine assigned to ${trainee.name}!`);
+                ToastService.success("Routine assigned", `${trainee.name} will see it on their plan.`);
             } else {
                 await savePrescribedMeal(trainee.id, {
                     coachId: user.uid,
@@ -81,39 +81,35 @@ export function TemplateDetailScreen() {
                     macros: template.data.macros,
                     isApplied: false
                 });
-                Alert.alert("Success", `Nutrition plan assigned to ${trainee.name}!`);
+                ToastService.success("Nutrition plan assigned", `${trainee.name} can apply the targets from Nutrition.`);
             }
             setPickerVisible(false);
         } catch (error) {
-            Alert.alert("Error", "Failed to assign template.");
+            ToastService.error("Error", "Failed to assign template.");
         } finally {
             setIsAssigning(false);
         }
     };
 
     const handleDelete = () => {
-        Alert.alert(
-            "Delete Template",
-            "Are you sure you want to remove this from your library?",
-            [
-                { text: "Cancel", style: "cancel" },
-                {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: async () => {
-                        const user = auth.currentUser;
-                        if (!user) return;
-                        try {
-                            const ref = doc(db, "users", user.uid, "templates", templateId);
-                            await deleteDoc(ref);
-                            navigation.goBack();
-                        } catch (error) {
-                            Alert.alert("Error", "Failed to delete template.");
-                        }
-                    }
+        ToastService.confirm({
+            title: "Delete this template?",
+            message: "It will be removed from your library. This cannot be undone.",
+            confirmLabel: "Delete",
+            destructive: true,
+            onConfirm: async () => {
+                const user = auth.currentUser;
+                if (!user) return;
+                try {
+                    const ref = doc(db, "users", user.uid, "templates", templateId);
+                    await deleteDoc(ref);
+                    navigation.goBack();
+                } catch (error) {
+                    console.error("[TemplateDetail] Delete failed:", error);
+                    ToastService.error("Error", "Failed to delete template.");
                 }
-            ]
-        );
+            },
+        });
     };
 
     const [searchQuery, setSearchQuery] = useState("");
@@ -124,7 +120,7 @@ export function TemplateDetailScreen() {
 
     if (isLoading) {
         return (
-            <ScreenShell title="Loading..." contentStyle={styles.center}>
+            <ScreenShell title="Loading" contentStyle={styles.center}>
                 <ActivityIndicator color={colors.primary} />
             </ScreenShell>
         );
@@ -132,7 +128,7 @@ export function TemplateDetailScreen() {
 
     if (!template) {
         return (
-            <ScreenShell title="Not Found">
+            <ScreenShell title="Not found">
                 <Text style={{ color: "#fff" }}>Template not found.</Text>
             </ScreenShell>
         );
@@ -208,11 +204,11 @@ export function TemplateDetailScreen() {
                         </View>
 
                         <View style={styles.modalSearch}>
-                            <Ionicons name="search" size={18} color="#666" />
+                            <Ionicons name="search" size={18} color={colors.iconFaint} />
                             <TextInput
                                 style={styles.modalSearchInput}
                                 placeholder="Search clients..."
-                                placeholderTextColor="#666"
+                                placeholderTextColor={colors.textMuted}
                                 value={searchQuery}
                                 onChangeText={setSearchQuery}
                             />
@@ -233,7 +229,7 @@ export function TemplateDetailScreen() {
                                     >
                                         <View style={styles.avatarMini}><Text style={styles.avatarTxt}>{(t.name || "?")[0]}</Text></View>
                                         <Text style={styles.traineeName}>{t.name || "Anonymous"}</Text>
-                                        <Ionicons name="chevron-forward" size={18} color="#444" />
+                                        <Ionicons name="chevron-forward" size={18} color={colors.iconFaint} />
                                     </Pressable>
                                 ))
                             )}
@@ -282,9 +278,9 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: "#333",
     },
-    indexText: { color: "#666", fontSize: 13, fontWeight: "800" },
+    indexText: { color: colors.textMuted, fontSize: 13, fontWeight: "800" },
     exName: { color: "#fff", fontSize: 16, fontWeight: "700" },
-    exMeta: { color: "#8c8c8c", fontSize: 13, fontWeight: "500", marginTop: 2 },
+    exMeta: { color: colors.textMuted, fontSize: 13, fontWeight: "500", marginTop: 2 },
     mealCard: {
         backgroundColor: "#161616",
         padding: 20,
@@ -297,7 +293,7 @@ const styles = StyleSheet.create({
     macroRow: { flexDirection: "row", gap: 20 },
     macroItem: { flex: 1, gap: 4 },
     macroVal: { color: colors.primary, fontSize: 18, fontWeight: "900" },
-    macroLabel: { color: "#666", fontSize: 10, fontWeight: "800", letterSpacing: 0.5 },
+    macroLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "800", letterSpacing: 0.5 },
     footer: { marginTop: 10 },
     primaryBtn: {
         backgroundColor: colors.primary,
@@ -336,7 +332,7 @@ const styles = StyleSheet.create({
     avatarMini: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
     avatarTxt: { color: colors.primaryText, fontWeight: "900", fontSize: 16 },
     traineeName: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "700" },
-    emptyText: { color: "#666", textAlign: "center", marginTop: 40, fontSize: 15 },
+    emptyText: { color: colors.textMuted, textAlign: "center", marginTop: 40, fontSize: 15 },
     modalSearch: {
         flexDirection: "row",
         alignItems: "center",
