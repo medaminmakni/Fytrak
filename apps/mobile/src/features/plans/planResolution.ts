@@ -104,6 +104,34 @@ export const isScheduledProgram = <S>(program: ScheduledProgram<S>): boolean => 
 };
 
 /**
+ * Whether a published program's date range covers `dateKey`.
+ *
+ * This is the only way to tell a REST DAY from HAVING NO PLAN.
+ * `resolvePlanDimension` returns `sourceType: "none"` for both — a program with
+ * no session on this date looks identical to no program at all — and the
+ * difference matters to the person reading it: a rest day is the plan working,
+ * whereas "nothing planned" on a programmed rest day reads as the app having
+ * lost the plan.
+ *
+ * `durationWeeks` bounds the range. A program with no usable duration covers
+ * only its own start day, because guessing how long it runs would invent rest
+ * days after it ended.
+ */
+export const isProgramCoveringDate = <S>(
+  program: ScheduledProgram<S> & { durationWeeks?: number | null },
+  dateKey: string
+): boolean => {
+  if (!isScheduledProgram(program) || !isValidDateKey(dateKey)) return false;
+  const start = program.startDateKey as string;
+  if (dateKey < start) return false;
+  const weeks = program.durationWeeks;
+  const days = typeof weeks === "number" && Number.isFinite(weeks) && weeks > 0
+    ? Math.floor(weeks) * 7
+    : 1;
+  return daysBetweenDateKeys(start, dateKey) < days;
+};
+
+/**
  * The program session falling on `dateKey`, by explicit offset only.
  *
  * Placement comes from `startDateKey + dayOffset` and nothing else. Array

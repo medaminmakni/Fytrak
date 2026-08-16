@@ -1,9 +1,11 @@
 export type Unsubscribe = () => void;
 
 type Listener<T> = (value: T) => void;
+type ErrorListener = (error: unknown) => void;
 
 type CacheEntry = {
   listeners: Set<Listener<unknown>>;
+  errorListeners: Set<ErrorListener>;
   unsubscribe: Unsubscribe | null;
   value: unknown;
   hasValue: boolean;
@@ -35,7 +37,8 @@ const cache = new Map<string, CacheEntry>();
 export function subscribeWithCache<T>(
   key: string,
   factory: (emit: Listener<T>, onError?: (error: unknown) => void) => Unsubscribe,
-  listener: Listener<T>
+  listener: Listener<T>,
+  onError?: ErrorListener
 ): Unsubscribe {
   if (!key) {
     throw new Error("subscribeWithCache requires a key.");
@@ -45,6 +48,7 @@ export function subscribeWithCache<T>(
   if (!entry) {
     entry = {
       listeners: new Set(),
+      errorListeners: new Set(),
       unsubscribe: null,
       value: null,
       hasValue: false,
@@ -55,6 +59,7 @@ export function subscribeWithCache<T>(
 
   const typedListener = listener as Listener<unknown>;
   entry.listeners.add(typedListener);
+  if (onError) entry.errorListeners.add(onError);
   entry.refCount += 1;
 
   if (!entry.unsubscribe) {
@@ -72,10 +77,18 @@ export function subscribeWithCache<T>(
         console.error(`[subscriptionCache] listener failed for "${key}":`, error);
         const current = cache.get(key);
         if (current !== created) return;
+        const errorListeners = [...current.errorListeners];
         current.hasValue = false;
         current.value = null;
         current.unsubscribe = null;
         cache.delete(key);
+        errorListeners.forEach((callback) => {
+          try {
+            callback(error);
+          } catch (callbackError) {
+            console.error(`[subscriptionCache] error callback failed for "${key}":`, callbackError);
+          }
+        });
       }
     );
   }
@@ -92,6 +105,7 @@ export function subscribeWithCache<T>(
     const current = cache.get(key);
     if (!current) return;
     current.listeners.delete(typedListener);
+    if (onError) current.errorListeners.delete(onError);
     current.refCount -= 1;
 
     if (current.refCount <= 0) {
@@ -114,6 +128,7 @@ export function clearSubscriptionCache(): void {
       console.error("[subscriptionCache] failed to tear down listener:", error);
     }
     entry.listeners.clear();
+    entry.errorListeners.clear();
   });
   cache.clear();
 }

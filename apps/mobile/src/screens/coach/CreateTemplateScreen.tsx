@@ -103,7 +103,7 @@ export function CreateTemplateScreen() {
                                         onPress={() => setExercises(exercises.filter((_: any, i: number) => i !== idx))}
                                         disabled={exercises.length === 1}
                                     >
-                                        <Ionicons name="trash-outline" size={18} color={exercises.length === 1 ? "#333" : "#ff4444"} />
+                                        <Ionicons name="trash-outline" size={18} color={exercises.length === 1 ? colors.surfaceInset : colors.danger} />
                                     </Pressable>
                                 </View>
 
@@ -207,24 +207,24 @@ const styles = StyleSheet.create({
     shellContent: { paddingBottom: 0 },
     scroll: { paddingBottom: 60, gap: 20, marginTop: 10 },
     card: {
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         borderRadius: 20,
         padding: 20,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         gap: 8,
     },
     label: { color: colors.primary, fontSize: 11, fontWeight: "900", letterSpacing: 1, textTransform: "uppercase" },
     titleInput: { color: "#ffffff", fontSize: 20, fontWeight: "800", paddingVertical: 8 },
-    exerciseCard: { backgroundColor: "#1c1c1e", borderRadius: 20, padding: 20, gap: 16, borderWidth: 1, borderColor: "#2c2c2e" },
+    exerciseCard: { backgroundColor: colors.surfaceInset, borderRadius: 20, padding: 20, gap: 16, borderWidth: 1, borderColor: colors.surfaceInset },
     exHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
     exNumber: { color: colors.textDim, fontSize: 12, fontWeight: "900" },
-    exNameInput: { backgroundColor: "#161616", borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: "#ffffff", fontSize: 16, fontWeight: "700", borderWidth: 1, borderColor: "#2c2c2e" },
+    exNameInput: { backgroundColor: colors.surface, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, color: "#ffffff", fontSize: 16, fontWeight: "700", borderWidth: 1, borderColor: colors.surfaceInset },
     paramGrid: { flexDirection: "row", gap: 12 },
     paramItem: { flex: 1, gap: 6 },
     paramLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "900", textAlign: "center" },
-    paramInput: { backgroundColor: "#161616", borderRadius: 10, paddingVertical: 10, textAlign: "center", color: colors.primary, fontSize: 15, fontWeight: "800", borderWidth: 1, borderColor: "#2c2c2e" },
-    addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, gap: 10, backgroundColor: "#161616", borderRadius: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#333" },
+    paramInput: { backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 10, textAlign: "center", color: colors.primary, fontSize: 15, fontWeight: "800", borderWidth: 1, borderColor: colors.surfaceInset },
+    addBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 16, gap: 10, backgroundColor: colors.surface, borderRadius: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#333" },
     addBtnText: { color: colors.primary, fontWeight: "900", fontSize: 13 },
     footer: { marginTop: 10 },
     saveBtn: { backgroundColor: colors.primary, borderRadius: 20, height: 64, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 },

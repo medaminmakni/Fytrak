@@ -3,6 +3,7 @@ import { ScrollView, StyleSheet, Text, View, Pressable, ActivityIndicator, TextI
 import { useNavigation } from "@react-navigation/native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
+import { iconSize } from "../../theme/tokens";
 import { Ionicons } from "@expo/vector-icons";
 import { auth } from "../../config/firebase";
 import { subscribeToCoachTemplates, CoachTemplate } from "../../services/userSession";
@@ -96,12 +97,19 @@ export function CoachLibraryScreen() {
                                     style={styles.templateCard}
                                     onPress={() => navigation.navigate("TemplateDetail", { templateId: t.id, type: t.type })}
                                 >
-                                    <View style={styles.cardAccent} />
+                                    {/*
+                                      Same neutral tile for both types. The icon
+                                      carries the category — a green restaurant
+                                      glyph beside a yellow barbell made colour
+                                      mean "this is the food one", when green
+                                      means a goal was met everywhere else in
+                                      the app.
+                                    */}
                                     <View style={styles.cardIconBox}>
                                         <Ionicons
                                             name={t.type === "workout" ? "barbell" : "restaurant"}
-                                            size={20}
-                                            color={t.type === "workout" ? colors.primary : "#4ade80"}
+                                            size={iconSize.md}
+                                            color={colors.textSecondary}
                                         />
                                     </View>
                                     <View style={styles.cardContent}>
@@ -153,23 +161,25 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 12,
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         alignItems: "center",
         justifyContent: "center",
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     tab: {
         paddingHorizontal: 20,
         paddingVertical: 10,
         borderRadius: 12,
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
+    // Which segment you are on is state. The accent on this screen belongs
+    // to creating a template.
     tabActive: {
-        backgroundColor: colors.primary,
-        borderColor: colors.primary,
+        backgroundColor: colors.surfaceInset,
+        borderColor: colors.surfaceInset,
     },
     tabText: {
         color: colors.textMuted,
@@ -182,13 +192,13 @@ const styles = StyleSheet.create({
     searchBar: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         borderRadius: 16,
         paddingHorizontal: 16,
         height: 52,
         gap: 12,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         marginBottom: 24,
     },
     searchInput: {
@@ -205,18 +215,18 @@ const styles = StyleSheet.create({
         gap: 24,
     },
     emptyBox: {
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         borderRadius: 28,
         padding: 30,
         alignItems: "center",
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     iconCircle: {
         width: 80,
         height: 80,
         borderRadius: 40,
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         alignItems: "center",
         justifyContent: "center",
         marginBottom: 20,
@@ -253,29 +263,24 @@ const styles = StyleSheet.create({
         gap: 16,
     },
     templateCard: {
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         borderRadius: 24,
         padding: 16,
         paddingStart: 24,
         flexDirection: "row",
         alignItems: "center",
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         overflow: "hidden",
     },
-    cardAccent: {
-        position: "absolute",
-        start: 0,
-        top: 0,
-        bottom: 0,
-        width: 6,
-        backgroundColor: colors.primary,
-    },
+    // cardAccent removed with the green icon: a yellow bar down every workout
+    // template was the other half of colour-as-category, and yellow is reserved
+    // for the one next action on a screen.
     cardIconBox: {
         width: 48,
         height: 48,
         borderRadius: 14,
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         alignItems: "center",
         justifyContent: "center",
         marginEnd: 16,
@@ -301,7 +306,7 @@ const styles = StyleSheet.create({
         height: 80,
         borderRadius: 24,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         borderStyle: "dashed",
         flexDirection: "row",
         alignItems: "center",
@@ -312,7 +317,7 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
         borderRadius: 20,
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         alignItems: "center",
         justifyContent: "center",
     },

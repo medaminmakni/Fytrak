@@ -4,7 +4,6 @@ import {
   getDocs,
   query,
   serverTimestamp,
-  Timestamp,
   updateDoc,
   setDoc,
   where,
@@ -57,23 +56,21 @@ const safeUpdate = async (uid: string, data: Record<string, unknown>) => {
   }
 };
 
-export const updateClientSummaryAfterWorkout = async (uid: string): Promise<void> => {
-  const since = Timestamp.fromDate(new Date(Date.now() - 7 * 86400000));
-  const q = query(
-    collection(db, usersCollection, uid, "workouts"),
-    where("createdAt", ">=", since),
-    limit(100)
-  );
-
-  const snapshot = await getDocs(q);
-  const workoutsLast7Days = snapshot.size;
-
-  await safeUpdate(uid, {
-    "clientSummary.workoutsLast7Days": workoutsLast7Days,
-    "clientSummary.lastWorkoutAt": serverTimestamp(),
-    "clientSummary.updatedAt": serverTimestamp(),
-  });
-};
+/*
+ * `updateClientSummaryAfterWorkout` was removed here.
+ *
+ * It had no callers anywhere in the repo — `saveWorkoutLog` writes the summary
+ * itself, inside the same `writeBatch` as the workout document. Keeping a
+ * second writer for the same fields was a live hazard rather than dead weight:
+ * it wrote through `safeUpdate`, which is two separate non-atomic requests, so
+ * a partial failure could leave `lastWorkoutAt` set with no workout behind it.
+ * It also had to be kept in step by hand — it already lagged on
+ * `lastWorkoutDateKey`, and would have silently re-introduced the bug that
+ * field exists to fix the first time anything called it.
+ *
+ * If a repair path is ever needed, derive it from the workouts collection in
+ * one batch rather than restoring this.
+ */
 
 export const updateClientSummaryAfterMeal = async (uid: string): Promise<void> => {
   const dateStr = localDateKeyDaysAgo(6);

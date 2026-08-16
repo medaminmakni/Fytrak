@@ -131,20 +131,17 @@ export const resolveCoachRequest = async (traineeId: string, accept: boolean): P
   const requestId = getCoachRequestId(traineeId, coachId);
   const requestRef = doc(db, coachRequestsCollection, requestId);
   const traineeRef = doc(db, usersCollection, traineeId);
-  const [requestSnapshot, traineeSnapshot] = await Promise.all([
-    getDoc(requestRef),
-    getDoc(traineeRef),
-  ]);
+  // A pending coach may read the request, but must not receive the trainee's
+  // full user/profile document before an assignment exists. The atomic batch
+  // below is the authority for the trainee-side preconditions: Firestore rules
+  // require the user to still be pending for this coach in the same commit.
+  const requestSnapshot = await getDoc(requestRef);
   const requestData = requestSnapshot.data();
-  const trainee = traineeSnapshot.data();
   if (!requestSnapshot.exists() || requestData?.status !== "pending") {
     throw new Error("This coach request is no longer pending.");
   }
   if (requestData.coachId !== coachId || requestData.traineeId !== traineeId) {
     throw new Error("You cannot review this request.");
-  }
-  if (!traineeSnapshot.exists() || trainee?.assignmentStatus !== "pending" || trainee.selectedCoachId !== coachId) {
-    throw new Error("The trainee request state changed. Refresh and try again.");
   }
 
   const batch = writeBatch(db);

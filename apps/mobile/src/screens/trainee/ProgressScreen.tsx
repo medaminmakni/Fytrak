@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     marginBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: "#1c1c1e",
+    borderBottomColor: colors.surfaceInset,
   },
   tabBtn: {
     paddingVertical: 12,

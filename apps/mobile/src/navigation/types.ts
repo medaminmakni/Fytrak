@@ -1,7 +1,23 @@
-import type { CompositeNavigationProp } from "@react-navigation/native";
+import type { CompositeNavigationProp, NavigatorScreenParams } from "@react-navigation/native";
 import type { MaterialTopTabNavigationProp } from "@react-navigation/material-top-tabs";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { ProgramSession } from "../services/programService";
+
+/**
+ * The adjustment a prescription form is fulfilling.
+ *
+ * Passed through navigation rather than held in a store: the coach authors the
+ * replacement in the existing editor, and this is the only extra context that
+ * editor needs. Every field is required — a partial revision context is how a
+ * revision ends up pointing at nothing.
+ */
+export type PlanRevisionContext = {
+  /** The single client-local day being replaced. */
+  effectiveFromDateKey: string;
+  reason: string;
+  summary: string;
+  traineeTimezone: string | null;
+};
 
 export type RootStackParamList = {
   Welcome: undefined;
@@ -16,19 +32,37 @@ export type RootStackParamList = {
   CoachAssignment: undefined;
   PendingCoach: undefined;
   TraineeTabs: undefined;
-  CoachTabs: undefined;
+  CoachTabs: NavigatorScreenParams<CoachTabsParamList> | undefined;
   Profile: undefined;
   TraineeDetail: { traineeId: string; traineeName: string; traineeTimezone?: string | null };
-  PrescribeWorkout: { traineeId: string; traineeName: string };
-  CreateProgram: { traineeId: string; traineeName: string };
-  PrescribeMeal: { traineeId: string; traineeName: string };
   /**
-   * The coach inbox passes the assignment-scoped thread document id. It is
-   * required so a stale deep link cannot derive and reopen a legacy pair thread.
+   * `revision` is present only when the coach arrived via Adjust plan. It
+   * carries the day being replaced and the reason, and it locks the schedule
+   * field. Absent means the ordinary prescribing flow, unchanged.
    */
-  CoachChat: { traineeId: string; traineeName?: string; coachId: string; threadId: string };
+  PrescribeWorkout: {
+    traineeId: string;
+    traineeName: string;
+    /** Client-local day selected in the report that opened this flow. */
+    initialDateKey?: string;
+    revision?: PlanRevisionContext;
+  };
+  CreateProgram: {
+    traineeId: string;
+    traineeName: string;
+    /** Client-local day selected in the report that opened this flow. */
+    initialDateKey?: string;
+  };
+  PrescribeMeal: {
+    traineeId: string;
+    traineeName: string;
+    /** Client-local day selected in the report that opened this flow. */
+    initialDateKey?: string;
+    revision?: PlanRevisionContext;
+  };
   CreateTemplate: { type: "workout" | "meal"; template?: unknown };
   TemplateDetail: { templateId: string; type: "workout" | "meal" };
+  AdjustPlan: { traineeId: string; traineeName: string; traineeTimezone?: string | null };
   EditCoachProfile: undefined;
 };
 
@@ -36,14 +70,37 @@ export type CoachTabsParamList = {
   CoachHome: undefined;
   CoachClients: undefined;
   CoachLibrary: undefined;
-  CoachInbox: undefined;
+  CoachInbox: NavigatorScreenParams<CoachInboxStackParamList> | undefined;
   CoachProfile: undefined;
+};
+
+export type CoachConversationParams = {
+  traineeId: string;
+  traineeName?: string;
+  coachId: string;
+  /** Resolved by the Inbox list when its thread summary is already loaded. */
+  threadId?: string;
+  /** Resolved through assignments/{assignmentId} from other coach surfaces. */
+  assignmentId?: string;
+};
+
+export type CoachInboxStackParamList = {
+  InboxList: undefined;
+  CoachConversation: CoachConversationParams;
 };
 
 export type TraineeTabsParamList = {
   Workouts: {
     autoLoadPrescriptionId?: string;
     programSession?: ProgramSession;
+    /**
+     * Which program the session belongs to, and the client-local day it was
+     * scheduled for. Both are required to open a program session: they become
+     * the log's source metadata, and without them a finished workout cannot be
+     * matched back to the prescription that asked for it.
+     */
+    programId?: string;
+    programScheduledDateKey?: string;
   } | undefined;
   Nutrition: undefined;
   Home: undefined;

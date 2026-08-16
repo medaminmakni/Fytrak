@@ -180,25 +180,48 @@ export const subscribeToSessionState = (uid: string, callback: (session: Session
 
 // --- PROFILE CRUD ---
 
-export const subscribeToUserProfile = (uid: string, callback: (profile: UserProfile) => void) => {
+/**
+ * Subscribes to one user's profile.
+ *
+ * This function used to manufacture `macroTargets: { calories: 2100, protein:
+ * 160, carbs: 220, fats: 65 }` in THREE separate places — a missing document, a
+ * real document with no targets, and a failed read. Those numbers are a
+ * coaching prescription. They were rendered to trainees as their own plan and
+ * to coaches as their client's, and nothing anywhere distinguished them from
+ * targets a coach had actually set. All three are gone; none is replaced with a
+ * different default.
+ *
+ * `macroTargets` is now `undefined` whenever it is genuinely absent, which the
+ * `UserProfile` type has always allowed (`macroTargets?: MacroTargets`).
+ *
+ * @param onError Called for a read failure AND for a missing document. Both
+ *   mean "there is no profile to show", and neither may be answered with an
+ *   invented one. Callers that pass it render an explicit unavailable state;
+ *   the callback is simply never invoked, so nothing downstream sees a
+ *   half-real profile.
+ */
+export const subscribeToUserProfile = (
+  uid: string,
+  callback: (profile: UserProfile) => void,
+  onError?: (error: Error) => void
+) => {
   const ref = doc(db, usersCollection, uid);
   return onSnapshot(
     ref,
     (snapshot) => {
       if (!snapshot.exists()) {
-        callback({
-          uid,
-          email: "",
-          role: "trainee",
-          goal: "Not set",
-          macroTargets: { calories: 2100, protein: 160, carbs: 220, fats: 65 },
-          workoutProfileCompleted: false,
-          nutritionProfileCompleted: false,
-          isPremium: false,
-          assignmentStatus: "unassigned",
-          selectedCoachId: null,
-          selectedCoachName: null,
-        });
+        /*
+         * No document is not a blank trainee.
+         *
+         * This synthesised a whole profile — `role: "trainee"` for any uid
+         * including a coach's, `assignmentStatus: "unassigned"` for someone who
+         * may well be assigned, and a full macro prescription nobody wrote. The
+         * document is created during session bootstrap (`syncSessionState`), so
+         * reaching here at all means something is wrong; answering it with a
+         * fiction hid that.
+         */
+        console.error(`[ProfileService] No profile document for ${uid}.`);
+        onError?.(new Error("This profile could not be found."));
         return;
       }
       const data = snapshot.data();
@@ -215,7 +238,13 @@ export const subscribeToUserProfile = (uid: string, callback: (profile: UserProf
         injuries: training.injuries || profile.injuries,
         name: data.name,
         bio: data.bio || profile.bio,
-        macroTargets: data.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 },
+        /*
+         * Undefined when the user has no targets. `|| {...}` meant a trainee
+         * who had never completed nutrition onboarding was shown 2,100 kcal as
+         * their plan, and `hasTargets` was true, so no screen ever offered the
+         * "no plan set" state that exists for exactly this case.
+         */
+        macroTargets: data.macroTargets,
         workoutProfileCompleted: data.workoutProfileCompleted || false,
         nutritionProfileCompleted: data.nutritionProfileCompleted || false,
         isPremium: data.isPremium || false,
@@ -243,19 +272,20 @@ export const subscribeToUserProfile = (uid: string, callback: (profile: UserProf
     },
     (error) => {
       console.error("[ProfileService] User profile subscription failed:", error);
-      callback({
-        uid,
-        email: "",
-        role: "trainee",
-        goal: "Not set",
-        macroTargets: { calories: 2100, protein: 160, carbs: 220, fats: 65 },
-        workoutProfileCompleted: false,
-        nutritionProfileCompleted: false,
-        isPremium: false,
-        assignmentStatus: "unassigned",
-        selectedCoachId: null,
-        selectedCoachName: null,
-      });
+
+      /*
+       * A failed read is NOT a profile.
+       *
+       * This called `callback` with a synthesised object carrying the same
+       * invented macro targets. On the coach's client-day report those numbers
+       * rendered as the client's nutrition plan, so a network failure was drawn
+       * as a real, specific prescription — and `hasTargets` was true, which
+       * suppressed the "no plan set" state that would otherwise have hinted
+       * something was off.
+       *
+       * Every caller now passes `onError`, so no screen is left waiting.
+       */
+      onError?.(error instanceof Error ? error : new Error("Could not load this profile."));
     }
   );
 };
@@ -288,7 +318,22 @@ export const saveCompleteProfile = async (uid: string, payload: CompleteProfileP
     },
     workoutProfileCompleted: false,
     nutritionProfileCompleted: false,
-    macroTargets: payload.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 },
+    /*
+     * A FOURTH fabrication site, and the only one that persisted.
+     *
+     * This wrote `{ calories: 2100, protein: 160, carbs: 220, fats: 65 }` into
+     * the document whenever the payload carried no targets — which is the
+     * normal case here, since this step sets `nutritionProfileCompleted: false`
+     * and the real targets arrive later from the nutrition intake. The stored
+     * value was then indistinguishable from targets a coach had actually set,
+     * so fixing only the read path would not have helped these users: their
+     * document genuinely contains 2,100.
+     *
+     * The key is omitted entirely rather than written as null, so `undefined`
+     * means the same thing everywhere and `merge: true` cannot clear real
+     * targets on a re-run of onboarding.
+     */
+    ...(payload.macroTargets ? { macroTargets: payload.macroTargets } : {}),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 };

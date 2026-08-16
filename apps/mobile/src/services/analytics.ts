@@ -4,7 +4,8 @@ type AnalyticsEventMap = {
     totalVolume: number;
     durationMinutes: number;
     personalRecords: number;
-    source: "manual" | "coach_prescribed";
+    /** `program_session` was added when program sessions became traceable. */
+    source: "manual" | "coach_prescribed" | "program_session";
   };
   active_workout_resumed: {
     exerciseCount: number;
@@ -14,10 +15,13 @@ type AnalyticsEventMap = {
     missionId: "workout" | "nutrition" | "coach" | "bodyMetric";
     completionPercent: number;
   };
-  coach_risk_card_opened: {
-    risk: "high" | "medium" | "low";
-    complianceScore: number;
-  };
+  /*
+   * `coach_risk_card_opened` was removed here. It carried `risk:
+   * "high"|"medium"|"low"` and `complianceScore` — the two values the coach
+   * dashboard stopped deriving in Phase 2 and whose engine was deleted in
+   * Phase 5. It had no emitters; the type was the last reference in the app to
+   * a number that graded clients on meals photographed.
+   */
 };
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;

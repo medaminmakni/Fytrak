@@ -1,5 +1,6 @@
 import { AssignmentStatus, UserRole } from "../state/types";
 import type { ClientDateMetadata } from "../../../../packages/shared/src";
+import type { StoredCheckIn } from "../features/workouts/checkIn";
 
 export type ProfileLevel = "Beginner" | "Intermediate" | "Advanced";
 
@@ -135,6 +136,20 @@ export interface WorkoutSet {
 export interface WorkoutLog extends ClientDateMetadata {
   id: string;
   name: string;
+  /**
+   * What this log was performed AGAINST, when it was performed against
+   * anything. Absent on a freely logged workout.
+   *
+   * Completion of a program session is derived from these four fields on the
+   * LOG, never stored on the program: the program document is the coach's
+   * prescription and the trainee must not be able to write to it. All four must
+   * match for a session to count as done — a workout logged on the same day is
+   * not the same thing as the session that was asked for.
+   */
+  sourceType?: "program";
+  sourceProgramId?: string;
+  sourceProgramSessionId?: string;
+  sourceScheduledDateKey?: string;
   date?: string;
   exercises: {
     name: string;
@@ -142,11 +157,24 @@ export interface WorkoutLog extends ClientDateMetadata {
   }[];
   duration?: number;
   totalVolume?: number;
-  checkIn?: {
-    energy: number;
-    soreness: number;
-    mood: number;
-  };
+  /**
+   * How the session felt, captured immediately after it.
+   *
+   * This has been written since the check-in screen shipped and read by nothing
+   * — not the coach dashboard, not the client's day, not the daily report. It
+   * is the only subjective signal in the product, and the one a coach needs to
+   * decide whether a missed session is fatigue, life, or an injury starting.
+   *
+   * `pain` is deliberately NOT a 1-5 scale like the others. Soreness at 5/5 is
+   * a normal outcome of a hard session; pain at 5/5 is a stop signal. Putting
+   * them on the same scale is how a coach reads "4" and moves on. A flag forces
+   * a yes/no, and the note says where — which is what actually changes the next
+   * prescription.
+   *
+   * `sleepHours` is hours, not a rating, for the same reason: "5 hours" tells a
+   * coach what to do with tomorrow's volume; "sleep 2/5" does not.
+   */
+  checkIn?: StoredCheckIn;
   createdAt?: any;
 }
 

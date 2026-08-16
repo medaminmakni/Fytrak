@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
     subscribeToDailyMeals,
     subscribeToDailyWorkouts,
@@ -28,13 +28,30 @@ import type {
  */
 export type DataStatus = "loading" | "loaded" | "error";
 
+/**
+ * The dimensions of one client-day, each loading and failing independently.
+ *
+ * `plans` used to be ONE dimension fed by three subscriptions — daily workout
+ * prescriptions, daily meal prescriptions and programs — combined two ways that
+ * were both wrong:
+ *
+ * - it only became `loaded` once all three had responded, so a slow programs
+ *   query hid a workout plan that had already arrived;
+ * - any one of the three failing marked the whole thing `error`, so a failed
+ *   MEAL plan read made the screen say the workout plan was unavailable.
+ *
+ * They are now split along the lines the UI actually renders: the planned
+ * workout (daily prescriptions plus programs, which resolve together) and the
+ * planned nutrition (daily meal prescriptions, which have no program fallback).
+ */
 export type TraineeDetailDimension =
     | "meals"
     | "workouts"
     | "water"
     | "metrics"
     | "profile"
-    | "plans";
+    | "plannedWorkout"
+    | "plannedNutrition";
 
 type StatusMap = Record<TraineeDetailDimension, DataStatus>;
 
@@ -44,7 +61,8 @@ const ALL_DIMENSIONS: TraineeDetailDimension[] = [
     "water",
     "metrics",
     "profile",
-    "plans",
+    "plannedWorkout",
+    "plannedNutrition",
 ];
 
 const initialStatus = (): StatusMap => ({
@@ -53,11 +71,19 @@ const initialStatus = (): StatusMap => ({
     water: "loading",
     metrics: "loading",
     profile: "loading",
-    plans: "loading",
+    plannedWorkout: "loading",
+    plannedNutrition: "loading",
 });
 
-/** A listener that never responds is a failure, not an eternal spinner. */
-const LOAD_TIMEOUT_MS = 12000;
+/**
+ * A listener that never responds is a failure, not an eternal spinner.
+ *
+ * Exported so the daily-report listener on TraineeDetailScreen — the seventh
+ * dimension, which lives on the screen rather than in this hook — times out on
+ * the same budget. Two different limits would mean two different moments at
+ * which the same stalled connection stops being called "loading".
+ */
+export const LOAD_TIMEOUT_MS = 12000;
 
 /**
  * Loads one client's activity for one specific day.
@@ -80,6 +106,25 @@ export function useTraineeDetailData(traineeId: string, dateKey: string) {
 
     const [status, setStatus] = useState<StatusMap>(initialStatus);
     const [errors, setErrors] = useState<Partial<Record<TraineeDetailDimension, string>>>({});
+
+    /*
+     * Retry, without a new data layer.
+     *
+     * Bumping this token re-runs the subscription effect, which tears the old
+     * listeners down and attaches fresh ones. The screen's timeout message has
+     * said "Pull to retry" since it shipped while nothing was listening for a
+     * pull; this is the mechanism that sentence always implied.
+     */
+    const [retryToken, setRetryToken] = useState(0);
+
+    /*
+     * Distinguishes a RETRY of the same client-day from navigating to a
+     * different one. On a retry the already-loaded sections must keep their
+     * content on screen — resetting every dimension to `loading` would blank a
+     * report the coach is reading because one unrelated listener failed.
+     */
+    const loadKey = `${traineeId}|${dateKey}`;
+    const loadKeyRef = useRef<string | null>(null);
 
     // Avoids re-creating the status setters on every render.
     const markRef = useRef<{
@@ -117,8 +162,29 @@ export function useTraineeDetailData(traineeId: string, dateKey: string) {
             return;
         }
 
-        setStatus(initialStatus());
-        setErrors({});
+        const isSameTarget = loadKeyRef.current === loadKey;
+        loadKeyRef.current = loadKey;
+
+        if (isSameTarget) {
+            // Retry: only the dimensions that have nothing to show go back to
+            // `loading`. Loaded ones keep their content and their status, and
+            // their listeners re-deliver from cache almost immediately.
+            setStatus((prev) => {
+                const next = { ...prev };
+                let changed = false;
+                ALL_DIMENSIONS.forEach((d) => {
+                    if (next[d] !== "loaded") {
+                        next[d] = "loading";
+                        changed = true;
+                    }
+                });
+                return changed ? next : prev;
+            });
+            setErrors({});
+        } else {
+            setStatus(initialStatus());
+            setErrors({});
+        }
 
         const loaded = (d: TraineeDetailDimension) => markRef.current.loaded(d);
         const failed = (d: TraineeDetailDimension, e: unknown) =>
@@ -159,42 +225,62 @@ export function useTraineeDetailData(traineeId: string, dateKey: string) {
             (error) => failed("metrics", error)
         );
 
-        const unsubProfile = subscribeToUserProfile(traineeId, (data) => {
-            setTraineeProfile(data);
-            loaded("profile");
-        });
+        /*
+         * The only subscription here that had NO error callback. A failed
+         * profile read left the dimension `loading` until the 12s timeout, and
+         * `macroTargets` stayed undefined — which the nutrition card renders as
+         * "no plan set". A failed read was therefore shown as a client with no
+         * targets, which is a different fact entirely.
+         */
+        const unsubProfile = subscribeToUserProfile(
+            traineeId,
+            (data) => {
+                setTraineeProfile(data);
+                loaded("profile");
+            },
+            (error) => failed("profile", error)
+        );
 
         // The PLANNED side of the report. Read-only here — resolution into a
         // specific day happens in the pure resolver, never in this hook.
-        const loadedPlanParts = new Set<"workouts" | "meals" | "programs">();
-        const planPartLoaded = (part: "workouts" | "meals" | "programs") => {
-            loadedPlanParts.add(part);
-            if (loadedPlanParts.size === 3) loaded("plans");
+        /*
+         * The planned WORKOUT resolves from two sources — a daily prescription
+         * overrides, a program supplies the rest — so it needs both before it
+         * can honestly say "no workout planned". Either failing makes the
+         * dimension unavailable, because a missing source is indistinguishable
+         * from an empty one from the resolver's point of view.
+         */
+        const workoutPlanParts = new Set<"prescriptions" | "programs">();
+        const workoutPlanPartLoaded = (part: "prescriptions" | "programs") => {
+            workoutPlanParts.add(part);
+            if (workoutPlanParts.size === 2) loaded("plannedWorkout");
         };
-        const planFailed = (error: Error) => failed("plans", error);
         const unsubPrescribedWorkouts = subscribeToPrescriptionHistory(
             traineeId,
             (data) => {
                 setPrescribedWorkouts(data as ScheduledPrescribedWorkout[]);
-                planPartLoaded("workouts");
+                workoutPlanPartLoaded("prescriptions");
             },
-            planFailed
-        );
-        const unsubPrescribedMeals = subscribeToPrescribedMealHistory(
-            traineeId,
-            (data) => {
-                setPrescribedMeals(data as ScheduledPrescribedMeal[]);
-                planPartLoaded("meals");
-            },
-            planFailed
+            (error) => failed("plannedWorkout", error)
         );
         const unsubPrograms = subscribeToTraineePrograms(
             traineeId,
             (data) => {
                 setPrograms(data as ScheduledProgramDoc[]);
-                planPartLoaded("programs");
+                workoutPlanPartLoaded("programs");
             },
-            planFailed
+            (error) => failed("plannedWorkout", error)
+        );
+
+        // Nutrition has no program fallback, so it is a single source and
+        // resolves on its own. It no longer waits on, or fails with, programs.
+        const unsubPrescribedMeals = subscribeToPrescribedMealHistory(
+            traineeId,
+            (data) => {
+                setPrescribedMeals(data as ScheduledPrescribedMeal[]);
+                loaded("plannedNutrition");
+            },
+            (error) => failed("plannedNutrition", error)
         );
 
         const timeout = setTimeout(() => {
@@ -211,7 +297,7 @@ export function useTraineeDetailData(traineeId: string, dateKey: string) {
                 setErrors((prevErrors) => {
                     const nextErrors = { ...prevErrors };
                     ALL_DIMENSIONS.forEach((d) => {
-                        if (prev[d] === "loading") nextErrors[d] = "Timed out. Pull to retry.";
+                        if (prev[d] === "loading") nextErrors[d] = "Timed out. Tap Retry.";
                     });
                     return nextErrors;
                 });
@@ -230,7 +316,7 @@ export function useTraineeDetailData(traineeId: string, dateKey: string) {
             unsubPrescribedMeals();
             unsubPrograms();
         };
-    }, [traineeId, dateKey]);
+    }, [traineeId, dateKey, loadKey, retryToken]);
 
     /** The body metric recorded on the selected day, or undefined. */
     const metricForDate = useMemo(
@@ -263,6 +349,40 @@ export function useTraineeDetailData(traineeId: string, dateKey: string) {
     );
 
     /**
+     * Re-attaches every listener for the current client-day.
+     *
+     * Deliberately re-runs ALL of them rather than only the failed ones: the
+     * failures are usually a single connectivity blip, and a partial retry
+     * would leave the report assembled from two different moments.
+     */
+    const retry = useCallback(() => {
+        /*
+         * The status reset happens HERE, not in the effect.
+         *
+         * The effect runs after the next render, so for one frame the retried
+         * dimensions were still `error` — long enough for a caller computing
+         * "is anything loading?" to conclude the retry had already finished and
+         * re-enable the control. Resetting in the same batch as the token means
+         * the very next render already sees them as `loading`.
+         *
+         * Only non-`loaded` dimensions move. A dimension the coach can already
+         * read stays exactly as it is, content and all.
+         */
+        setStatus((prev) => {
+            const next = { ...prev };
+            let changed = false;
+            ALL_DIMENSIONS.forEach((d) => {
+                if (next[d] !== "loaded") {
+                    next[d] = "loading";
+                    changed = true;
+                }
+            });
+            return changed ? next : prev;
+        });
+        setRetryToken((token) => token + 1);
+    }, []);
+
+    /**
      * Trend figures across the recent window. Explicitly NOT day-scoped —
      * `latestWeight` is the most recent measurement on record, which may be
      * weeks old, so it must never be rendered as the selected day's weight.
@@ -292,5 +412,13 @@ export function useTraineeDetailData(traineeId: string, dateKey: string) {
         errors,
         isLoading,
         hasAnyError,
+        /*
+         * The ACTION only. This hook no longer reports "am I retrying?":
+         * the report/review listener lives on TraineeDetailScreen, so a hook
+         * that only watches its own six dimensions declared a report-only retry
+         * finished the moment it began. The combined lifecycle lives in
+         * `features/coaching/retryState.ts`.
+         */
+        retry,
     };
 }

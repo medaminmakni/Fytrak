@@ -37,7 +37,10 @@ export function AttentionCenter({ items }: Props) {
   }
 
   return (
-    <DashboardSection title="Needs attention">
+    <DashboardSection
+      title="Then"
+      subtitle="The queue below the top action, in priority order"
+    >
       <View style={dashboardStyles.list}>
         {items.map((item) => (
           <Pressable

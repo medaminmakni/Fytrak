@@ -4,29 +4,40 @@ import { radius, spacing, typography } from "../../../../theme/tokens";
 
 type Props = {
   totalClients: number;
-  activeClients: number;
-  /** Average logging-consistency score across the roster. See the note below. */
-  consistency: number;
-  followUpsDue: number;
+  /** Clients whose most recent workout log is today. */
+  loggedToday: number;
+  /** Clients with no log for three days or more. */
+  silent: number;
 };
 
 /**
- * Four numbers, four flat tiles.
+ * Four counts. Every one is something the app can prove.
  *
- * The third one used to be labelled "Compliance", which it is not. The score it
- * shows is `complianceScore` from coachIntelligence: 55 points for workouts
- * logged, 25 for meals *logged* (a count, not a comparison against targets),
- * and 20 for protein — which defaults to 12 free points when the client has no
- * protein target at all. So a client eating well over their calories can score
- * highly, and calling that "adherence" tells the coach something untrue about
- * their roster. It measures how consistently clients LOG, so it says so.
+ * Two tiles were removed rather than relabelled:
+ *
+ * - "Logging 78%" (previously "Compliance"). That is `complianceScore`: 55
+ *   points for workouts logged, 25 for meals *logged* — a count, never compared
+ *   against a target — and 20 for protein, which pays 12 points for free when
+ *   the client has no protein target. A client eating 4,000 kcal against 2,100
+ *   scored highly. Renaming it did not make it true; it is gone.
+ * - "Due". It was `atRiskClients.filter(risk === "high").length` — the same
+ *   clients the silence count already covers, presented as a separate concern.
+ *
+ * Three tiles, not four.
+ *
+ * The design calls for "To review" in the third slot and it is the right
+ * number — but it cannot be queried yet. `reviewStatus` is derived at read time
+ * from `clientDateKey < today`, never stored, so Firestore has nothing to
+ * filter on; `reviewAvailableAt` is read but never written. Counting it needs a
+ * collection-group query on `coachId + reviewedAt + clientDateKey`, a new
+ * index, and a rules change. "Silent 3d+" holds the slot until then because it
+ * is provable today — it is not a stand-in that pretends to be the same thing.
  */
-export function KpiStrip({ totalClients, activeClients, consistency, followUpsDue }: Props) {
+export function KpiStrip({ totalClients, loggedToday, silent }: Props) {
   const items = [
     { key: "clients", label: "Clients", value: String(totalClients) },
-    { key: "active", label: "Active", value: String(activeClients) },
-    { key: "logging", label: "Logging", value: `${consistency}%` },
-    { key: "due", label: "Due", value: String(followUpsDue) },
+    { key: "logged", label: "Logged today", value: String(loggedToday) },
+    { key: "silent", label: "Silent 3d+", value: String(silent) },
   ];
 
   return (

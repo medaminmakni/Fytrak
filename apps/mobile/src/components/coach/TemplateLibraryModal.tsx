@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
         justifyContent: "flex-end",
     },
     modalContent: {
-        backgroundColor: "#111",
+        backgroundColor: colors.surface,
         borderTopLeftRadius: 32,
         borderTopRightRadius: 32,
         height: "85%",
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     modalSearch: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         borderRadius: 16,
         paddingHorizontal: 16,
         height: 50,
@@ -110,7 +110,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
         gap: 12,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     modalSearchInput: {
         flex: 1,

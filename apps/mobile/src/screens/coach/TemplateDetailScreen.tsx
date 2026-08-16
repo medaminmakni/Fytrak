@@ -179,7 +179,7 @@ export function TemplateDetailScreen() {
 
                 <View style={styles.footer}>
                     <Pressable
-                        style={[styles.primaryBtn, { backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#333", marginBottom: 12 }]}
+                        style={[styles.primaryBtn, { backgroundColor: colors.surfaceInset, borderWidth: 1, borderColor: "#333", marginBottom: 12 }]}
                         onPress={() => navigation.navigate("CreateTemplate", { type, template })}
                     >
                         <Text style={[styles.primaryBtnText, { color: "#fff" }]}>EDIT TEMPLATE</Text>
@@ -261,18 +261,18 @@ const styles = StyleSheet.create({
     exerciseRow: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         padding: 16,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         gap: 16,
     },
     indexCircle: {
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         alignItems: "center",
         justifyContent: "center",
         borderWidth: 1,
@@ -282,11 +282,11 @@ const styles = StyleSheet.create({
     exName: { color: "#fff", fontSize: 16, fontWeight: "700" },
     exMeta: { color: colors.textMuted, fontSize: 13, fontWeight: "500", marginTop: 2 },
     mealCard: {
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         padding: 20,
         borderRadius: 24,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         gap: 20,
     },
     mealDesc: { color: "#fff", fontSize: 15, lineHeight: 22, fontWeight: "500" },
@@ -313,15 +313,15 @@ const styles = StyleSheet.create({
         height: "60%",
         padding: 24,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
     modalTitle: { color: "#fff", fontSize: 20, fontWeight: "900" },
-    closeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center" },
+    closeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
     traineeItem: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#111",
+        backgroundColor: colors.surface,
         padding: 16,
         borderRadius: 20,
         marginBottom: 12,
@@ -329,20 +329,20 @@ const styles = StyleSheet.create({
         borderColor: "#222",
         gap: 16,
     },
-    avatarMini: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+    avatarMini: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
     avatarTxt: { color: colors.primaryText, fontWeight: "900", fontSize: 16 },
     traineeName: { flex: 1, color: "#fff", fontSize: 16, fontWeight: "700" },
     emptyText: { color: colors.textMuted, textAlign: "center", marginTop: 40, fontSize: 15 },
     modalSearch: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#111",
+        backgroundColor: colors.surface,
         borderRadius: 16,
         paddingHorizontal: 16,
         height: 52,
         gap: 12,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         marginBottom: 20,
     },
     modalSearchInput: {

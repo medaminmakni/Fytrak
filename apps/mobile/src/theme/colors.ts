@@ -25,6 +25,15 @@ export const colors = {
   surface: "#151515",
   /** A region nested inside a surface: an input well, a read-only row. */
   surfaceInset: "#1e1e1e",
+  /**
+   * The floating tab capsule, and nothing else.
+   *
+   * A fourth surface is a design smell, so this one is named for its single
+   * permitted use. The capsule floats over scrolling content rather than
+   * sitting on the page, and at `surface` it disappeared against cards passing
+   * underneath it. The design sheet lists it separately for the same reason.
+   */
+  surfaceTabBar: "#1a1a1a",
 
   // ---------------------------------------------------------------------------
   // Text — three steps, all legible on bg

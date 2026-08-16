@@ -6,12 +6,12 @@
     "scheme": "fytrak",
     "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/branding/raster/icon_main.png",
+    "icon": "./assets/brand/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/branding/raster/logo_full_light.png",
+      "image": "./assets/brand/splash-transparent.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#0B0B0B"
     },
     "ios": {
       "supportsTablet": true
@@ -25,13 +25,13 @@
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#ffffff",
-        "foregroundImage": "./assets/branding/raster/icon_main.png"
+        "backgroundColor": "#0B0B0B",
+        "foregroundImage": "./assets/brand/icon-adaptive.png"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/brand/favicon.png"
     },
     "plugins": [
       "expo-localization",
@@ -54,6 +54,15 @@
         }
       ],
       "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/brand/splash-transparent.png",
+          "imageWidth": 1,
+          "resizeMode": "contain",
+          "backgroundColor": "#0B0B0B"
+        }
+      ],
       "@react-native-google-signin/google-signin"
     ],
     "extra": {

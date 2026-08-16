@@ -13,6 +13,7 @@ import type { BodyMetric } from "../services/profileService";
 import type { Meal } from "../services/nutritionService";
 import type { UserProfile } from "../services/profileService";
 import { getCutoffDate, toSafeDate, type ChartFilter } from "../utils/chartFilters";
+import { calculateMacroAdherence } from "../features/nutrition/nutritionTargets";
 
 type ChartDataPoint = {
   value: number;
@@ -150,7 +151,7 @@ export function useProgressCharts(
           : name === "Legs" ? "#4ade80"
           : name === "Shoulders" ? "#fbbf24"
           : name === "Arms" ? "#a855f7"
-          : "#ffcc00",
+          : colors.primary,
         labelTextStyle: { color: colors.textMuted, fontSize: 11, fontWeight: "800" } as const,
       }));
 
@@ -233,9 +234,7 @@ export function useProgressCharts(
 
   const macroAdherence = useMemo(() => {
     const totalCals = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
-    const targetCals = userProfile?.macroTargets?.calories || 2000;
-    if (totalCals === 0) return 0;
-    return Math.min(Math.round((totalCals / targetCals) * 100), 100);
+    return calculateMacroAdherence(totalCals, userProfile?.macroTargets?.calories);
   }, [meals, userProfile]);
 
   return {

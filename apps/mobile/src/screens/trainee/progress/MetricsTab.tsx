@@ -168,11 +168,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   card: {
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     marginBottom: 16,
   },
   cardHeader: {
@@ -204,10 +204,10 @@ const styles = StyleSheet.create({
   stepper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     height: 56,
   },
   stepBtn: {
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: "#2c2c2e",
+    borderTopColor: colors.surfaceInset,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -254,11 +254,11 @@ const styles = StyleSheet.create({
   },
   summaryCard: {
     flexDirection: "row",
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     marginBottom: 16,
   },
   summaryItem: {
@@ -268,14 +268,14 @@ const styles = StyleSheet.create({
   divider: {
     width: 1,
     height: "100%",
-    backgroundColor: "#2c2c2e",
+    backgroundColor: colors.surfaceInset,
   },
   historyCard: {
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     marginBottom: 16,
   },
   historyRow: {
@@ -284,10 +284,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#1c1c1e",
+    borderBottomColor: colors.surfaceInset,
   },
   historyBf: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -299,11 +299,11 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   estimateBox: {
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 28,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   modalHeader: {
     flexDirection: "row",

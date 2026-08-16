@@ -34,13 +34,37 @@ export function calculateWorkoutVolume(exercises: CompletedWorkoutExercise[]): n
   }, 0);
 }
 
+/**
+ * A trainee's typed RPE, or the decision to store nothing.
+ *
+ * Returns `{ ok: false }` for input that is not an RPE, so the row can ignore
+ * the keystroke rather than storing a value the scale does not have. Clearing
+ * the field yields `{ ok: true, rpe: undefined }` — Firestore is configured
+ * with `ignoreUndefinedProperties`, so an unrated set carries no `rpe` field at
+ * all and reads back as genuinely absent rather than as a zero.
+ *
+ * RPE is never required. It is the one field on a set that describes how the
+ * work felt, and a trainee who does not want to rate a set must be able to
+ * finish it — the same rule the post-session check-in follows.
+ */
+export function parseRpeInput(raw: string): { ok: true; rpe: string | undefined } | { ok: false } {
+  const trimmed = raw.trim();
+  if (trimmed === "") return { ok: true, rpe: undefined };
+  if (!/^\d{1,2}$/.test(trimmed)) return { ok: false };
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 1 || value > 10) return { ok: false };
+  return { ok: true, rpe: String(value) };
+}
+
 export function duplicateSetForNextEntry(set: WorkoutSet, type: WorkoutSet["type"]): WorkoutSet {
   return {
     type,
     reps: set.reps,
     weight: set.weight,
     durationSec: set.durationSec,
-    rpe: set.rpe,
+    // RPE describes effort actually experienced in this set. A new set has
+    // not happened yet, so carrying a prior rating would fabricate data.
+    rpe: undefined,
     isCompleted: false,
   };
 }

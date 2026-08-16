@@ -27,6 +27,7 @@ import { useClientDateKey } from "../../hooks/useClientDateKey";
 import { ToastService } from "../../components/Toast";
 import { WaterTracker } from "../../components/WaterTracker";
 import { Surface } from "../../components/Surface";
+import { ErrorState } from "../../components/ErrorState";
 import { LogMealModal } from "../../features/nutrition/components/LogMealModal";
 import { NutritionIntakeForm } from "../../features/nutrition/components/NutritionIntakeForm";
 import { resolvePlanDimension } from "../../features/plans/planResolution";
@@ -42,6 +43,8 @@ export function NutritionScreen() {
   const [prescribed, setPrescribed] = useState<PrescribedMeal[]>([]);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileRetryToken, setProfileRetryToken] = useState(0);
   const [applyingPlanId, setApplyingPlanId] = useState<string | null>(null);
   const [isLogModalVisible, setIsLogModalVisible] = useState(false);
   const [isSavingMeal, setIsSavingMeal] = useState(false);
@@ -57,11 +60,26 @@ export function NutritionScreen() {
       if (profile) setIsLoading(false);
     });
 
-    const unsubProfile = subscribeToUserProfile(uid, (data) => {
-      setProfile(data);
-      if (data.nutritionProfileCompleted !== true) setShowIntake(true);
-      setIsLoading(false);
-    });
+    const unsubProfile = subscribeToUserProfile(
+      uid,
+      (data) => {
+        setProfile(data);
+        setProfileError(null);
+        if (data.nutritionProfileCompleted !== true) setShowIntake(true);
+        setIsLoading(false);
+      },
+      /*
+       * Deliberately does NOT open the intake sheet. `showIntake` is driven by
+       * `nutritionProfileCompleted !== true`, and a failed read tells us
+       * nothing about whether they completed it — pushing someone back through
+       * nutrition onboarding because the network dropped would be the same
+       * class of mistake as inventing their targets.
+       */
+      () => {
+        setProfileError("We couldn't load your nutrition profile.");
+        setIsLoading(false);
+      }
+    );
 
     const unsubPrescribed = subscribeToPrescribedMealHistory(uid, (data) => {
       setPrescribed(data);
@@ -75,9 +93,21 @@ export function NutritionScreen() {
     // dateKey are the only real inputs — dateKey so the meal list rolls over
     // at midnight rather than pinning to the day the screen was opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, dateKey]);
+  }, [uid, dateKey, profileRetryToken]);
 
-  const targets = useMemo(() => profile?.macroTargets || { calories: 2100, protein: 160, carbs: 220, fats: 65 }, [profile]);
+  /*
+   * The trainee's real targets, or null.
+   *
+   * This was `profile?.macroTargets || { calories: 2100, protein: 160, carbs:
+   * 220, fats: 65 }`. A trainee who had never been given a plan saw
+   * "0 / 2100 kcal" and three macro bars filling against numbers nobody set —
+   * indistinguishable from targets their coach had actually written.
+   *
+   * Logged values are unaffected: what they ate is a fact either way, and it
+   * still renders in full below.
+   */
+  const targets = useMemo(() => profile?.macroTargets ?? null, [profile]);
+  const hasTargets = targets != null;
 
   const totals = useMemo(() => meals.reduce(
     (acc, meal) => ({
@@ -169,6 +199,22 @@ export function NutritionScreen() {
     finally { setApplyingPlanId(null); }
   };
 
+  if (profileError) {
+    return (
+      <ScreenShell title="Nutrition" subtitle="Track your macros" contentStyle={styles.shellContent}>
+        <ErrorState
+          title="We couldn't load your nutrition profile"
+          message="Your meals and targets have not been changed. Check your connection and try again."
+          onRetry={() => {
+            setProfileError(null);
+            setIsLoading(true);
+            setProfileRetryToken((value) => value + 1);
+          }}
+        />
+      </ScreenShell>
+    );
+  }
+
   if (showIntake) {
     return (
       <ScreenShell title="Nutrition" subtitle="Medical and lifestyle intake" contentStyle={styles.shellContent}>
@@ -189,22 +235,31 @@ export function NutritionScreen() {
                 <View style={{ flex: 1 }}>
                   <Typography variant="label" color={colors.textMuted}>CALORIE INTAKE</Typography>
                   <Typography variant="metric" style={styles.largeMetric}>
-                    {totals.calories} <Typography style={styles.metricSub}>/ {targets.calories} kcal</Typography>
+                    {totals.calories}{" "}
+                    <Typography style={styles.metricSub}>
+                      {hasTargets ? `/ ${targets.calories} kcal` : "kcal logged"}
+                    </Typography>
                   </Typography>
+                  {/*
+                    Stated once, plainly, instead of a denominator nobody set.
+                    The layout is unchanged — this replaces the "/ 2100" text.
+                  */}
+                  {!hasTargets && (
+                    <Typography variant="label" color={colors.textDim}>
+                      No nutrition targets set
+                    </Typography>
+                  )}
                 </View>
-                <NutritionRing current={totals.calories} target={targets.calories} />
+                <NutritionRing current={totals.calories} target={targets?.calories ?? null} />
               </View>
               <View style={styles.macrosRow}>
-                <MacroItem label="Protein" current={totals.protein} target={targets.protein} color={colors.success} icon="flash" />
-                <MacroItem label="Carbs" current={totals.carbs} target={targets.carbs} color={colors.primary} icon="restaurant" />
-                <MacroItem label="Fats" current={totals.fats} target={targets.fats} color={colors.danger} icon="water" />
+                <MacroItem label="Protein" current={totals.protein} target={targets?.protein ?? null} color={colors.success} icon="flash" />
+                <MacroItem label="Carbs" current={totals.carbs} target={targets?.carbs ?? null} color={colors.primary} icon="restaurant" />
+                <MacroItem label="Fats" current={totals.fats} target={targets?.fats ?? null} color={colors.danger} icon="water" />
               </View>
             </Surface>
 
-            {/* 2. WATER TRACKER */}
-            <WaterTracker />
-
-            {/* 3. COACH PRESCRIPTION BANNER */}
+            {/* 2. COACH PLAN — the easiest path, so it comes first. */}
             {(profile?.isPremium || profile?.assignmentStatus === "assigned") && visibleCoachPlan && (
               <View style={styles.coachBanner}>
                 <View style={styles.bannerHeader}>
@@ -231,7 +286,7 @@ export function NutritionScreen() {
               </View>
             )}
 
-            {/* 4. LOG ACTION */}
+            {/* 3. LOG ACTION */}
             <Pressable 
               style={styles.mainLogBtn} 
               onPress={() => setIsLogModalVisible(true)}
@@ -247,6 +302,14 @@ export function NutritionScreen() {
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.borderSubtle} />
             </Pressable>
+
+            {/*
+              Water sits BELOW the plan and the log action now.
+              Following the coach's plan has to be the shortest path on this
+              screen; a secondary tracker standing between the targets and the
+              plan made the plan the third thing a trainee saw.
+            */}
+            <WaterTracker />
 
             {/* 5. HISTORY SECTION */}
             <View style={styles.historySection}>

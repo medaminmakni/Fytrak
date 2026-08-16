@@ -89,9 +89,9 @@ export function PhotosTab() {
     setActiveComparePair([sorted[0], sorted[1]]);
   };
 
-  const isPremium = userProfile?.isPremium;
+  const hasPhotoAccess = userProfile?.isPremium === true || userProfile?.assignmentStatus === "assigned";
 
-  if (!isPremium) {
+  if (!hasPhotoAccess) {
     return (
       <View style={styles.lockedContainer}>
         <View style={styles.vaultLocked}>
@@ -141,8 +141,8 @@ export function PhotosTab() {
           {isSelectionMode && (
             <Pressable style={styles.deleteBtn} disabled={isSaving} onPress={handleDeleteSelected}>
               {isSaving
-                ? <ActivityIndicator size="small" color="#ff4444" />
-                : <Ionicons name="trash-outline" size={20} color="#ff4444" />}
+                ? <ActivityIndicator size="small" color={colors.danger} />
+                : <Ionicons name="trash-outline" size={20} color={colors.danger} />}
             </Pressable>
           )}
           {isCompareMode && compareSelection.length === 2 && (
@@ -258,11 +258,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   cancelBtn: {
     paddingHorizontal: 12,
@@ -313,12 +313,12 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   emptyAddBtn: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   emptyAddBtnText: {
     color: "#fff",
@@ -329,10 +329,10 @@ const styles = StyleSheet.create({
   vaultLocked: {
     alignItems: "center",
     padding: 30,
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     borderStyle: "dashed",
     marginTop: 20,
   },
@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 20,

@@ -77,7 +77,7 @@ export function ExerciseSearchModal({
                   No matches found
                 </Typography>
                 <Pressable
-                  style={[styles.loadBtn, { marginTop: 12, backgroundColor: "#111" }]}
+                  style={[styles.loadBtn, { marginTop: 12, backgroundColor: colors.surface }]}
                   onPress={() => onAddCustom(trimmedQuery || "Custom Exercise")}
                 >
                   <Ionicons name="add" size={18} color={colors.primary} />
@@ -144,23 +144,23 @@ export function ExerciseSearchModal({
 
 const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", justifyContent: "flex-end" },
-  modalContent: { backgroundColor: "#000", borderTopLeftRadius: 32, borderTopRightRadius: 32, height: "85%", padding: 24, borderWidth: 1, borderColor: "#1c1c1e" },
+  modalContent: { backgroundColor: "#000", borderTopLeftRadius: 32, borderTopRightRadius: 32, height: "85%", padding: 24, borderWidth: 1, borderColor: colors.surfaceInset },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   modalTitle: { color: "#fff" },
-  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "#111", alignItems: "center", justifyContent: "center" },
-  input: { backgroundColor: "#1c1c1e", borderRadius: 14, padding: 14, color: "#fff", fontSize: 14, borderWidth: 1, borderColor: "#2c2c2e" },
+  closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  input: { backgroundColor: colors.surfaceInset, borderRadius: 14, padding: 14, color: "#fff", fontSize: 14, borderWidth: 1, borderColor: colors.surfaceInset },
   searchingRow: { paddingVertical: 10, alignItems: "center" },
   emptyResults: { paddingVertical: 40, alignItems: "center" },
-  exerciseSelectItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 20, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: "#2c2c2e" },
+  exerciseSelectItem: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceInset, borderRadius: 20, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: colors.surfaceInset },
   modalItemTitle: { color: "#fff", fontSize: 16, fontWeight: "800" },
   tagRow: { flexDirection: "row", gap: 8, marginTop: 4 },
-  tag: { backgroundColor: "#1c1c1e", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: "#2c2c2e" },
+  tag: { backgroundColor: colors.surfaceInset, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: colors.surfaceInset },
   tagText: { color: "#aaa", fontSize: 11, fontWeight: "900" },
   actionRow: { flexDirection: "row", gap: 12 },
-  infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: "#1c1c1e", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#2c2c2e" },
+  infoIconBtn: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.surfaceInset },
   addIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
-  loadBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#161616", padding: 16, borderRadius: 20, borderWidth: 1, borderColor: "#2c2c2e", gap: 12 },
+  loadBtn: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surface, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: colors.surfaceInset, gap: 12 },
   loadBtnText: { color: colors.primary, fontSize: 13, fontWeight: "900", letterSpacing: 0.5 },
-  addExBtn: { minHeight: 56, backgroundColor: "#161616", paddingVertical: 18, paddingHorizontal: 20, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#333", gap: 10 },
+  addExBtn: { minHeight: 56, backgroundColor: colors.surface, paddingVertical: 18, paddingHorizontal: 20, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#333", gap: 10 },
   addExText: { color: colors.primary, fontWeight: "900", fontSize: 13, letterSpacing: 0.5 },
 });

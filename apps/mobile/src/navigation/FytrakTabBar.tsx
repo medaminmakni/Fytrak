@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ParamListBase, TabNavigationState } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { Animated, Keyboard, Pressable, StyleSheet, Text, Dimensions, View } from "react-native";
+import { Animated, Easing, Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { colors } from "../theme/colors";
-import { radius } from "../theme/tokens";
+import { radius, typography } from "../theme/tokens";
 
 const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   Workouts: "barbell-outline",
@@ -13,19 +14,32 @@ const iconByRoute: Record<string, keyof typeof Ionicons.glyphMap> = {
   Progress: "stats-chart-outline",
   Chat: "chatbubbles-outline",
   // Coach routes
-  CoachHome: "grid-outline",
+  CoachHome: "home-outline",
   CoachClients: "people-outline",
   CoachLibrary: "library-outline",
   CoachInbox: "chatbubbles-outline",
   CoachProfile: "person-outline",
 };
 
-const TAB_BAR_HORIZONTAL_MARGIN = 40;
-const BAR_HEIGHT = 68;
-/** Vertical inset of the active pill inside the bar, top and bottom. */
-const INDICATOR_INSET = 6;
-/** Horizontal gap between the active pill and its neighbours. */
-const INDICATOR_GAP = 4;
+/*
+ * Capsule geometry, from the design sheet. Every number here is a point value
+ * at 390pt width and maps 1:1 to React Native units.
+ */
+/** 16 each side. */
+const TAB_BAR_HORIZONTAL_MARGIN = 32;
+const BAR_HEIGHT = 64;
+/** Uniform padding inside the capsule; the active cell insets by exactly this. */
+const CAPSULE_PADDING = 5;
+/**
+ * The scrim above the capsule.
+ *
+ * The bar floats over scrolling content, so a photo or a bright card passing
+ * underneath used to bleed against its edge. A short fade to the page colour
+ * separates them without drawing a line.
+ */
+const SCRIM_HEIGHT = 28;
+/** Indicator travel: 280ms on the design's easing curve. */
+const INDICATOR_DURATION = 280;
 
 const labelByRoute: Record<string, string> = {
   Home: "Today",
@@ -37,7 +51,7 @@ const labelByRoute: Record<string, string> = {
   CoachClients: "Clients",
   CoachLibrary: "Library",
   CoachInbox: "Inbox",
-  CoachProfile: "Profile",
+  CoachProfile: "You",
 };
 
 type FytrakTabBarProps = {
@@ -58,9 +72,9 @@ type FytrakTabBarProps = {
 
 export function FytrakTabBar({ state, navigation, badges }: FytrakTabBarProps) {
   const insets = useSafeAreaInsets();
-  const { width } = Dimensions.get("window");
+  const { width } = useWindowDimensions();
   const barWidth = width - TAB_BAR_HORIZONTAL_MARGIN;
-  const tabWidth = barWidth / state.routes.length;
+  const tabWidth = (barWidth - CAPSULE_PADDING * 2) / state.routes.length;
 
   const translateX = useRef(new Animated.Value(0)).current;
   const [isKeyboardVisible, setKeyboardVisible] = useState(false);
@@ -75,30 +89,37 @@ export function FytrakTabBar({ state, navigation, badges }: FytrakTabBarProps) {
   }, []);
 
   useEffect(() => {
-    Animated.spring(translateX, {
+    /*
+     * Timing, not spring. The design specifies 280ms on cubic-bezier(.2,.8,.2,1)
+     * — a curve that leaves quickly and settles without overshoot. A spring
+     * bounces past the target cell and back, which on a five-cell bar reads as
+     * the indicator briefly selecting the wrong tab.
+     */
+    Animated.timing(translateX, {
       toValue: state.index * tabWidth,
+      duration: INDICATOR_DURATION,
+      easing: Easing.bezier(0.2, 0.8, 0.2, 1),
       useNativeDriver: true,
-      friction: 8,
-      tension: 50,
     }).start();
-  }, [state.index, tabWidth]);
+  }, [state.index, tabWidth, translateX]);
 
   if (isKeyboardVisible) return null;
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {/* Fades content out behind the floating capsule. Not interactive. */}
+      <LinearGradient
+        pointerEvents="none"
+        colors={["rgba(11,11,11,0)", colors.bg]}
+        style={styles.scrim}
+      />
       <View style={[styles.bar, { width: barWidth }]}>
         <Animated.View
           style={[
             styles.indicator,
             {
               width: tabWidth,
-              transform: [{
-                translateX: translateX.interpolate({
-                  inputRange: [0, tabWidth * (state.routes.length - 1)],
-                  outputRange: [0, tabWidth * (state.routes.length - 1)]
-                })
-              }],
+              transform: [{ translateX }],
             },
           ]}
         >
@@ -200,27 +221,30 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: "center",
   },
+  scrim: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    // Sits directly on top of the capsule's own row.
+    bottom: "100%",
+    height: SCRIM_HEIGHT,
+  },
   bar: {
     height: BAR_HEIGHT,
-    backgroundColor: colors.surface,
-    // A rounded rect, not a pill: at this height a pill radius bows the ends in
-    // past the outer tabs and crowds their labels.
-    borderRadius: radius.card,
-    // Borderless. The surface is two steps lighter than the page background,
-    // which separates the bar on its own; an outline on top of that reads as a
-    // second, competing edge next to the active pill's.
+    backgroundColor: colors.surfaceTabBar,
+    borderRadius: radius.tabBar,
+    padding: CAPSULE_PADDING,
+    // Borderless AND shadowless. The design carries elevation with surface
+    // lightness alone; this previously drew a 20pt 50%-opacity shadow, the only
+    // shadow in the app and the one thing making the bar look pasted on.
     flexDirection: "row",
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 12,
   },
   indicator: {
     position: "absolute",
-    top: INDICATOR_INSET,
-    bottom: INDICATOR_INSET,
+    top: CAPSULE_PADDING,
+    bottom: CAPSULE_PADDING,
+    left: CAPSULE_PADDING,
   },
   /*
    * The active state is a tinted panel behind the whole tab — icon *and* label —
@@ -229,8 +253,7 @@ const styles = StyleSheet.create({
    */
   indicatorBubble: {
     flex: 1,
-    marginHorizontal: INDICATOR_GAP,
-    borderRadius: radius.nested,
+    borderRadius: radius.tabCell,
     backgroundColor: colors.primaryMuted,
   },
   tabButton: {
@@ -253,33 +276,34 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: -6,
     left: 10,
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 5,
+    minWidth: 16,
+    height: 16,
+    paddingHorizontal: 4,
     borderRadius: radius.pill,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
   },
+  /*
+   * 10px, and deliberately so. This is a numeral inside a fixed 16pt pill, not
+   * text — the 12px floor exists for language, and a badge count is a glyph.
+   * The design sheet specifies 10/700 here for the same reason.
+   */
   badgeText: {
     color: colors.primaryText,
     fontSize: 10,
-    fontWeight: "900",
-    lineHeight: 13,
+    fontWeight: "700",
+    lineHeight: 12,
   },
   tabLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: "700",
-    lineHeight: 14,
+    ...typography.tabLabel,
+    color: colors.textSecondary,
     textAlign: "center",
     width: "100%",
   },
   tabLabelActive: {
     color: colors.primary,
-    fontWeight: "800",
   },
 });
-
 
 

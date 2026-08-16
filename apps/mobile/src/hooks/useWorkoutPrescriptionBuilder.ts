@@ -10,6 +10,8 @@ import {
 import { ExerciseLibraryItem, t as tEx } from "../constants/exercises";
 import { useExerciseSearch } from "./useExerciseSearch";
 import { parseScheduleDateInput } from "../features/plans/scheduleInput";
+import { saveAdjustment } from "../services/planRevisionService";
+import type { PlanRevisionContext } from "../navigation/types";
 
 export type PrescribedExerciseInput = {
     name: string;
@@ -19,10 +21,30 @@ export type PrescribedExerciseInput = {
     restTime: string;
 };
 
-export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any) {
+/**
+ * @param revision Present only when the coach arrived through Adjust plan.
+ *   When set, the schedule date is fixed to the day being replaced and the save
+ *   writes the prescription and its revision record in one batch. When absent
+ *   this hook behaves exactly as it did before — ordinary prescribing is
+ *   untouched, including undated standing plans.
+ */
+export function useWorkoutPrescriptionBuilder(
+    traineeId: string,
+    navigation: any,
+    revision?: PlanRevisionContext | null,
+    initialDateKey?: string | null,
+) {
     const [title, setTitle] = useState("");
-    // Blank = unscheduled, which is the pre-Phase-D behaviour and stays valid.
-    const [scheduledDate, setScheduledDate] = useState("");
+    /*
+     * Blank = unscheduled, which is the pre-Phase-D behaviour and stays valid.
+     * An adjustment seeds it with the day being replaced and locks it: the
+     * revision record and the prescription must name the same day, and a
+     * free-text field the coach could edit is exactly how they diverge.
+     */
+    const [scheduledDate, setScheduledDate] = useState(
+        revision?.effectiveFromDateKey ?? initialDateKey ?? ""
+    );
+    const isAdjustment = Boolean(revision);
     const [exercises, setExercises] = useState<PrescribedExerciseInput[]>([
         { name: "", type: "WEIGHT_REPS", targetSets: 4, targetReps: "10-12", restTime: "60s" }
     ]);
@@ -139,20 +161,48 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
             return;
         }
 
+        /*
+         * An adjustment must carry every field its revision record needs. A
+         * half-populated route parameter is how a revision ends up pointing at
+         * nothing, so it is refused here rather than written incomplete.
+         */
+        if (revision && (!revision.effectiveFromDateKey || !revision.reason.trim())) {
+            ToastService.error("Missing adjustment details", "Start again from Adjust plan.");
+            return;
+        }
+
         try {
             setIsSubmitting(true);
             const user = auth.currentUser;
             if (!user) throw new Error("No coach session");
 
-            await savePrescribedWorkout(traineeId, {
+            const workoutDoc = {
                 coachId: user.uid,
                 coachName: user.displayName || "Your Coach",
                 title: title.trim(),
                 exercises: exercises,
                 isCompleted: false
-            }, schedule.scheduledDateKey);
+            };
 
-            if (saveAsTemplate) {
+            if (revision) {
+                // One batch: the prescription and the revision that points at
+                // it. Neither can exist without the other.
+                await saveAdjustment(
+                    {
+                        traineeId,
+                        kind: "workout",
+                        effectiveFromDateKey: revision.effectiveFromDateKey,
+                        reason: revision.reason,
+                        summary: revision.summary,
+                        traineeTimezone: revision.traineeTimezone,
+                    },
+                    { kind: "workout", workout: workoutDoc },
+                );
+            } else {
+                await savePrescribedWorkout(traineeId, workoutDoc, schedule.scheduledDateKey);
+            }
+
+            if (saveAsTemplate && !revision) {
                 const { saveCoachTemplate } = require("../services/userSession");
                 await saveCoachTemplate(user.uid, {
                     title: title.trim(),
@@ -161,13 +211,24 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
                 });
             }
 
-            ToastService.success("Workout assigned", schedule.scheduledDateKey
+            if (revision) {
+                ToastService.success(
+                    "Adjustment saved",
+                    `Scheduled for ${revision.effectiveFromDateKey}. That day only — every other day is unchanged.`,
+                );
+            } else {
+                ToastService.success("Workout assigned", schedule.scheduledDateKey
                     ? `Scheduled for ${schedule.scheduledDateKey}. It will appear on your client's plan for that day.`
                     : "Unscheduled — your client will see this as their next coach workout.");
-            navigation.goBack();
+            }
+            if (revision) navigation.pop(2);
+            else navigation.goBack();
         } catch (error) {
             console.error(error);
-            ToastService.error("Error", "Failed to assign workout.");
+            ToastService.error(
+                "Error",
+                error instanceof Error ? error.message : "Failed to assign workout.",
+            );
         } finally {
             setIsSubmitting(false);
         }
@@ -178,6 +239,8 @@ export function useWorkoutPrescriptionBuilder(traineeId: string, navigation: any
         setTitle,
         scheduledDate,
         setScheduledDate,
+        isAdjustment,
+        revision: revision ?? null,
         exercises,
         templates,
         libModalVisible,

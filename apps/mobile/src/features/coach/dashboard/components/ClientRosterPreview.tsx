@@ -1,8 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, Text, View } from "react-native";
 import { DashboardSection } from "./DashboardSection";
 import { dashboardStyles } from "./dashboardStyles";
-import { colors } from "../../../../theme/colors";
-import { typography } from "../../../../theme/tokens";
+import { ClientActivityLine, formatClientActivity } from "./ClientActivityLine";
 import type { RosterClientData } from "./dashboardTypes";
 
 type Props = {
@@ -25,11 +24,15 @@ export function ClientRosterPreview({ clients, onSeeAll }: Props) {
             key={client.id}
             onPress={client.onPress}
             accessibilityRole="button"
-            accessibilityLabel={`${client.name}, ${client.goal}, ${client.compliance} logged`}
+            accessibilityLabel={`${client.name}, ${client.goal}, ${formatClientActivity(client.activity)}`}
             style={({ pressed }) => [dashboardStyles.row, pressed && dashboardStyles.rowPressed]}
           >
             <View style={dashboardStyles.avatar}>
-              <Text style={dashboardStyles.avatarText}>{client.name[0]?.toUpperCase() || "?"}</Text>
+              {client.profileImageUrl ? (
+                <Image source={{ uri: client.profileImageUrl }} style={dashboardStyles.avatarImage} />
+              ) : (
+                <Text style={dashboardStyles.avatarText}>{client.name[0]?.toUpperCase() || "?"}</Text>
+              )}
             </View>
             <View style={dashboardStyles.rowBody}>
               <Text style={dashboardStyles.rowTitle} numberOfLines={1}>
@@ -39,21 +42,11 @@ export function ClientRosterPreview({ clients, onSeeAll }: Props) {
                 {client.goal}
               </Text>
             </View>
-            {/*
-              Reads as a bare percentage, so it is labelled. It is the logging
-              consistency score, not adherence to a plan — see KpiStrip.
-            */}
-            <Text style={styles.metric}>{client.compliance} logged</Text>
+            {/* Was a trailing "78% logged". See ClientActivityLine. */}
+            <ClientActivityLine state={client.activity} />
           </Pressable>
         ))}
       </View>
     </DashboardSection>
   );
 }
-
-const styles = StyleSheet.create({
-  metric: {
-    ...typography.label,
-    color: colors.textSecondary,
-  },
-});

@@ -3,10 +3,12 @@ import { View, StyleSheet } from "react-native";
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from "react-native-svg";
 import { colors } from "../theme/colors";
 import { Typography } from "./Typography";
+import { calculateNutritionProgress } from "../features/nutrition/nutritionTargets";
 
 interface NutritionRingProps {
   current: number;
-  target: number;
+  /** Null when the trainee has no calorie target. */
+  target: number | null;
 }
 
 export const NutritionRing = ({ current, target }: NutritionRingProps) => {
@@ -14,8 +16,9 @@ export const NutritionRing = ({ current, target }: NutritionRingProps) => {
   const strokeWidth = 10;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
-  const safeTarget = target > 0 ? target : 2000;
-  const progress = Math.min(current / safeTarget, 1);
+  // Same invented 2,000 denominator as MacroRing carried. Removed: with no
+  // target there is nothing to be a proportion of.
+  const { progress, percent } = calculateNutritionProgress(current, target);
   const strokeDashoffset = circumference - progress * circumference;
 
   return (
@@ -27,7 +30,7 @@ export const NutritionRing = ({ current, target }: NutritionRingProps) => {
             <Stop offset="1" stopColor="#d97706" stopOpacity="1" />
           </SvgLinearGradient>
         </Defs>
-        <Circle stroke="#1c1c1e" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} fill="none" />
+        <Circle stroke={colors.surfaceInset} cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} fill="none" />
         <Circle
           stroke="url(#gradNut)"
           cx={size / 2}
@@ -44,7 +47,9 @@ export const NutritionRing = ({ current, target }: NutritionRingProps) => {
         />
       </Svg>
       <View style={styles.overlay}>
-        <Typography variant="h2" style={styles.percentage}>{Math.round(progress * 100)}%</Typography>
+        <Typography variant="h2" style={styles.percentage}>
+          {percent === null ? "--" : `${percent}%`}
+        </Typography>
       </View>
     </View>
   );

@@ -1,3 +1,5 @@
+import type { NutritionTargetStatus } from "../nutrition/nutritionTargets";
+
 export type TodayMissionItemId = "workout" | "nutrition" | "coach" | "bodyMetric";
 
 export type TodayMissionItem = {
@@ -19,7 +21,16 @@ export type TodayMission = {
 type BuildTodayMissionInput = {
   hasWorkoutToday: boolean;
   caloriesLogged: number;
-  calorieTarget: number;
+  /**
+   * The trainee's calorie target, or null when they have none.
+   *
+   * Was `number`, defaulted with `input.calorieTarget || 2100`. That printed
+   * "0/2100 kcal logged" to a trainee who had never been given a target — a
+   * denominator nobody set, presented as their goal. Null is the honest shape;
+   * the copy below adapts rather than inventing one.
+   */
+  calorieTarget: number | null;
+  nutritionTargetStatus?: NutritionTargetStatus;
   hasCoachAssigned: boolean;
   hasMessagedToday: boolean;
   hasPendingWorkoutPlan: boolean;
@@ -28,9 +39,42 @@ type BuildTodayMissionInput = {
 };
 
 export function buildTodayMission(input: BuildTodayMissionInput): TodayMission {
-  const nutritionComplete = input.caloriesLogged > 0;
-  const caloriesLogged = input.caloriesLogged || 0;
-  const calorieTarget = input.calorieTarget || 2100;
+  /*
+   * The mission item is COMPLETE when food was logged, because the mission is
+   * "log your nutrition" and they did. What it must never do is describe that
+   * as adherence: logging food proves logging, not compliance, and against a
+   * target that may not exist there is nothing to be on track toward.
+   */
+  const caloriesLogged = Number.isFinite(input.caloriesLogged) ? Math.max(0, input.caloriesLogged) : 0;
+  const hasLoggedCalories = caloriesLogged > 0;
+
+  /*
+   * A target only counts if it is a real, positive, finite number. A zero or
+   * negative target would produce "X/0 kcal" and, anywhere a ratio is taken,
+   * a divide-by-zero or Infinity.
+   */
+  const calorieTarget =
+    typeof input.calorieTarget === "number" &&
+    Number.isFinite(input.calorieTarget) &&
+    input.calorieTarget > 0
+      ? input.calorieTarget
+      : null;
+
+  /*
+   * Four factual sentences, none of which claims progress toward a target that
+   * does not exist. "Nutrition is on track" is gone: it fired on
+   * `caloriesLogged > 0`, so a single 40 kcal coffee against an unknown target
+   * reported the day as on track.
+   */
+  const nutritionTargetStatus = input.nutritionTargetStatus
+    ?? (calorieTarget === null ? "absent" : "available");
+  const nutritionSubtitle = nutritionTargetStatus === "unknown"
+    ? "Nutrition target unavailable"
+    : calorieTarget !== null
+      ? `${caloriesLogged}/${calorieTarget} kcal logged`
+      : hasLoggedCalories
+        ? `${caloriesLogged} kcal logged`
+        : "No nutrition targets set";
 
   const unsortedItems: TodayMissionItem[] = [
     {
@@ -43,10 +87,10 @@ export function buildTodayMission(input: BuildTodayMissionInput): TodayMission {
     },
     {
       id: "nutrition",
-      title: input.hasPendingMealPlan ? "Review nutrition plan" : "Hit nutrition baseline",
-      subtitle: nutritionComplete ? "Nutrition is on track" : `${caloriesLogged}/${calorieTarget} kcal logged`,
-      icon: nutritionComplete ? "checkmark-circle" : "nutrition-outline",
-      isComplete: nutritionComplete,
+      title: input.hasPendingMealPlan ? "Review nutrition plan" : "Log nutrition",
+      subtitle: nutritionSubtitle,
+      icon: hasLoggedCalories ? "checkmark-circle" : "nutrition-outline",
+      isComplete: hasLoggedCalories,
       priority: input.hasPendingMealPlan ? 1 : 3,
     },
     {

@@ -24,13 +24,19 @@ import { Typography } from "../../components/Typography";
 export function PrescribeWorkoutScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { traineeId = "", traineeName = "" } = route.params ?? {};
+    const { traineeId = "", traineeName = "", initialDateKey = "" } = route.params ?? {};
+    /*
+     * Present only when the coach came through Adjust plan. Undefined is the
+     * ordinary prescribing flow, which is unchanged in every respect.
+     */
+    const revision = route.params?.revision ?? null;
 
     const {
         title,
         setTitle,
         scheduledDate,
         setScheduledDate,
+        isAdjustment,
         exercises,
         templates,
         libModalVisible,
@@ -59,7 +65,7 @@ export function PrescribeWorkoutScreen() {
         updateExercise,
         removeExercise,
         handleSave
-    } = useWorkoutPrescriptionBuilder(traineeId, navigation);
+    } = useWorkoutPrescriptionBuilder(traineeId, navigation, revision, initialDateKey);
 
     return (
         <ScreenShell
@@ -107,23 +113,37 @@ export function PrescribeWorkoutScreen() {
                         </View>
                         <View style={styles.inputGroup}>
                             <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>
-                                SCHEDULE FOR (OPTIONAL)
+                                {isAdjustment ? "REPLACING THE PLAN FOR" : "SCHEDULE FOR (OPTIONAL)"}
                             </Typography>
+                            {/*
+                              Locked on an adjustment. The revision record and
+                              this prescription must name the same day; an
+                              editable field is exactly how the two diverge, and
+                              nothing downstream could detect it afterwards.
+                            */}
                             <TextInput
                                 placeholder="YYYY-MM-DD"
                                 placeholderTextColor={colors.textDim}
-                                style={styles.textInput}
+                                style={[styles.textInput, isAdjustment && { opacity: 0.7 }]}
                                 value={scheduledDate}
                                 onChangeText={setScheduledDate}
+                                editable={!isAdjustment}
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 keyboardType="numbers-and-punctuation"
                             />
                             <Typography variant="label" color={colors.textDim} style={{ fontSize: 11 }}>
-                                {scheduledDate.trim()
-                                    ? `Scheduled for ${scheduledDate.trim()} — this takes priority over the program that day.`
-                                    : "Unscheduled — shown in your client's plan list, not tied to a day."}
+                                {isAdjustment
+                                    ? `Scheduled for ${scheduledDate} — this one day only. Later days are unchanged.`
+                                    : scheduledDate.trim()
+                                        ? `Scheduled for ${scheduledDate.trim()} — this takes priority over the program that day.`
+                                        : "Unscheduled — shown in your client's plan list, not tied to a day."}
                             </Typography>
+                            {isAdjustment && revision?.reason ? (
+                                <Typography variant="label" color={colors.textDim} style={{ fontSize: 11 }}>
+                                    Reason on the record: {revision.reason}
+                                </Typography>
+                            ) : null}
                         </View>
                     </View>
 
@@ -162,7 +182,7 @@ export function PrescribeWorkoutScreen() {
                                             <Ionicons name="information-circle-outline" size={20} color={ex.name ? colors.primary : "#222"} />
                                         </Pressable>
                                         <Pressable style={styles.exActionIcon} onPress={() => removeExercise(idx)}>
-                                            <Ionicons name="trash-outline" size={20} color="#f87171" />
+                                            <Ionicons name="trash-outline" size={20} color={colors.danger} />
                                         </Pressable>
                                     </View>
                                 </View>
@@ -207,19 +227,24 @@ export function PrescribeWorkoutScreen() {
                         </Pressable>
                     </View>
 
-                    {/* SAVE AS TEMPLATE */}
-                    <Pressable
-                        style={[styles.card, saveAsTemplate && { borderColor: colors.primary }]}
-                        onPress={() => setSaveAsTemplate(!saveAsTemplate)}
-                    >
-                        <View style={styles.templateRow}>
-                            <Ionicons name={saveAsTemplate ? "checkbox" : "square-outline"} size={22} color={saveAsTemplate ? colors.primary : colors.iconFaint} />
-                            <View style={{ flex: 1 }}>
-                                <Typography variant="h2" style={{ fontSize: 15 }}>Save to Library</Typography>
-                                <Typography variant="label" color={colors.textMuted}>Sync this routine to your coach templates.</Typography>
+                    {/* Template saving is a separate write. Keep adjustment
+                        commit semantics limited to the atomic prescription +
+                        revision pair so a template failure cannot invite a
+                        duplicate adjustment retry. */}
+                    {!isAdjustment ? (
+                        <Pressable
+                            style={[styles.card, saveAsTemplate && { borderColor: colors.primary }]}
+                            onPress={() => setSaveAsTemplate(!saveAsTemplate)}
+                        >
+                            <View style={styles.templateRow}>
+                                <Ionicons name={saveAsTemplate ? "checkbox" : "square-outline"} size={22} color={saveAsTemplate ? colors.primary : colors.iconFaint} />
+                                <View style={{ flex: 1 }}>
+                                    <Typography variant="h2" style={{ fontSize: 15 }}>Save to Library</Typography>
+                                    <Typography variant="label" color={colors.textMuted}>Sync this routine to your coach templates.</Typography>
+                                </View>
                             </View>
-                        </View>
-                    </Pressable>
+                        </Pressable>
+                    ) : null}
 
                     {/* FOOTER */}
                     <View style={styles.footer}>
@@ -230,7 +255,9 @@ export function PrescribeWorkoutScreen() {
                         >
                             {isSubmitting ? <ActivityIndicator color="#000" /> : (
                                 <>
-                                    <Typography style={{ color: "#000", fontWeight: '900', fontSize: 14 }}>ASSIGN TO TRAINEE</Typography>
+                                    <Typography style={{ color: "#000", fontWeight: '900', fontSize: 14 }}>
+                                        {isAdjustment ? "SAVE ADJUSTMENT" : "ASSIGN TO TRAINEE"}
+                                    </Typography>
                                     <Ionicons name="send" size={16} color="#000" />
                                 </>
                             )}
@@ -291,28 +318,28 @@ const styles = StyleSheet.create({
     shellContent: { paddingBottom: 0 },
     scroll: { paddingBottom: 100, gap: 16, marginTop: 10 },
     
-    card: { backgroundColor: "#161616", borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#333", gap: 16 },
+    card: { backgroundColor: colors.surface, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#333", gap: 16 },
     cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
     libContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1 },
 
     inputGroup: { gap: 8 },
-    textInput: { backgroundColor: '#0a0a0a', borderRadius: 16, padding: 16, color: '#fff', fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: '#1c1c1e' },
+    textInput: { backgroundColor: colors.bg, borderRadius: 16, padding: 16, color: '#fff', fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: colors.surfaceInset },
 
-    builderCard: { backgroundColor: "#161616", borderRadius: 24, padding: 18, borderWidth: 1, borderColor: "#333", gap: 16 },
-    exerciseItem: { backgroundColor: '#0a0a0a', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: '#1c1c1e', gap: 16 },
+    builderCard: { backgroundColor: colors.surface, borderRadius: 24, padding: 18, borderWidth: 1, borderColor: "#333", gap: 16 },
+    exerciseItem: { backgroundColor: colors.bg, borderRadius: 20, padding: 16, borderWidth: 1, borderColor: colors.surfaceInset, gap: 16 },
     exTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    exIndexBox: { width: 24, height: 24, borderRadius: 6, backgroundColor: '#1c1c1e', alignItems: 'center', justifyContent: 'center' },
+    exIndexBox: { width: 24, height: 24, borderRadius: 6, backgroundColor: colors.surfaceInset, alignItems: 'center', justifyContent: 'center' },
     exIndexText: { color: colors.primary, fontSize: 11, fontWeight: '900' },
     exSelector: { flex: 1 },
     exActions: { flexDirection: 'row', gap: 8 },
-    exActionIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#161616', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#2c2c2e' },
+    exActionIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.surfaceInset },
 
     exParams: { flexDirection: 'row', gap: 10 },
     paramBox: { flex: 1, gap: 4 },
     paramLabel: { textAlign: 'center', fontSize: 11, fontWeight: '900' },
-    paramInput: { backgroundColor: '#161616', borderRadius: 10, paddingVertical: 10, textAlign: 'center', color: colors.primary, fontSize: 16, fontWeight: '900', borderWidth: 1, borderColor: '#2c2c2e' },
+    paramInput: { backgroundColor: colors.surface, borderRadius: 10, paddingVertical: 10, textAlign: 'center', color: colors.primary, fontSize: 16, fontWeight: '900', borderWidth: 1, borderColor: colors.surfaceInset },
 
-    addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8, borderStyle: 'dashed', borderWidth: 1, borderColor: '#2c2c2e', borderRadius: 16 },
+    addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, gap: 8, borderStyle: 'dashed', borderWidth: 1, borderColor: colors.surfaceInset, borderRadius: 16 },
 
     templateRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
 

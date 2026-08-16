@@ -11,7 +11,7 @@ type Props = {
 export function ActivityFeed({ items }: Props) {
   return (
     <DashboardSection
-      title="Recent activity"
+      title="Since yesterday"
       isEmpty={items.length === 0}
       emptyText="Client activity will appear here."
     >

@@ -110,11 +110,32 @@ export type ClientSummary = {
   mealsLast7Days?: number;
   avgDailyProtein?: number;
   lastWorkoutAt?: unknown;
+  /**
+   * The CLIENT-local calendar day of the most recent workout, as stored at
+   * write time.
+   *
+   * Derived keys re-resolve against whatever timezone the client currently has,
+   * so a client who moves timezone would silently rewrite the day of every
+   * historical session. This pins it: the day a workout happened is decided
+   * once, by the person who did it, and never changes afterwards.
+   */
+  lastWorkoutDateKey?: string;
   lastMealAt?: unknown;
   lastMessageAt?: unknown;
   lastMessageText?: string;
   lastMessageSenderId?: string;
   unreadCoachCount?: number;
+  /**
+   * The most recent session where the client reported pain.
+   *
+   * Denormalised onto the summary the coach roster already reads, so pain can
+   * drive the dashboard queue without a listener per client. V0 has no
+   * scheduler and no functions; this is the smallest write that makes a safety
+   * signal visible.
+   */
+  lastPainAt?: unknown;
+  lastPainNote?: string;
+  lastPainDateKey?: string;
   updatedAt?: unknown;
 };
 

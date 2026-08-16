@@ -5,6 +5,8 @@ import { spacing, touchTarget, typography } from "../../../../theme/tokens";
 
 type DashboardSectionProps = PropsWithChildren<{
   title: string;
+  /** One line under the heading saying what the list is ordered by, or why. */
+  subtitle?: string;
   /** A trailing link, e.g. "See all". Rendered only with `onAction`. */
   actionLabel?: string;
   onAction?: () => void;
@@ -28,6 +30,7 @@ type DashboardSectionProps = PropsWithChildren<{
  */
 export function DashboardSection({
   title,
+  subtitle,
   actionLabel,
   onAction,
   emptyText,
@@ -37,9 +40,12 @@ export function DashboardSection({
   return (
     <View style={styles.section}>
       <View style={styles.header}>
-        <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
-          {title}
-        </Text>
+        <View style={styles.headingBlock}>
+          <Text style={styles.title} accessibilityRole="header" numberOfLines={1}>
+            {title}
+          </Text>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+        </View>
         {actionLabel && onAction ? (
           <Pressable
             onPress={onAction}
@@ -68,10 +74,17 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: spacing.md,
   },
+  headingBlock: {
+    flexShrink: 1,
+    gap: 2,
+  },
   title: {
     ...typography.heading,
     color: colors.text,
-    flexShrink: 1,
+  },
+  subtitle: {
+    ...typography.label,
+    color: colors.textSecondary,
   },
   action: {
     minHeight: touchTarget.min,

@@ -41,6 +41,12 @@ import { useWorkouts } from "../../hooks/useWorkouts";
 import { WorkoutExerciseCard } from "../../components/WorkoutExerciseCard";
 import { ExerciseSearchModal } from "../../features/workouts/components/ExerciseSearchModal";
 import { WorkoutCheckInView } from "../../features/workouts/components/WorkoutCheckInView";
+import {
+  emptyCheckInDraft,
+  toStoredCheckIn,
+  validateCheckInDraft,
+  type CheckInDraft,
+} from "../../features/workouts/checkIn";
 import { WorkoutIntakeView } from "../../features/workouts/components/WorkoutIntakeView";
 import { RestTimer } from "../../features/workouts/components/RestTimer";
 import { useClientDateKey } from "../../hooks/useClientDateKey";
@@ -74,6 +80,7 @@ export function WorkoutLogScreen() {
     workoutName, setWorkoutName,
     exercises, setExercises,
     activePrescriptionId, setActivePrescriptionId,
+    programSource, setProgramSource,
     workoutStartedAt, setWorkoutStartedAt,
     isCompletingWorkoutRef,
     restTimeLeft, setRestTimeLeft,
@@ -158,9 +165,13 @@ export function WorkoutLogScreen() {
 
   // CHECK-IN STATES
   const [isCheckingIn, setIsCheckingIn] = useState(false);
-  const [energy, setEnergy] = useState(3);
-  const [soreness, setSoreness] = useState(3);
-  const [mood, setMood] = useState(3);
+  /*
+   * One nullable draft, all fields starting unanswered. The previous version
+   * seeded energy/soreness/mood at 3 and sleep at 7.5h and wrote them whether
+   * or not the client touched anything, so a coach could read numbers the form
+   * had invented.
+   */
+  const [checkInDraft, setCheckInDraft] = useState<CheckInDraft>(emptyCheckInDraft);
   const [isSubmittingWorkout, setIsSubmittingWorkout] = useState(false);
   // Tracks the id returned by saveWorkoutLog once it succeeds, so that if a
   // later step (completePrescribedWorkout / clearActiveWorkoutDraft) throws
@@ -182,6 +193,9 @@ export function WorkoutLogScreen() {
           onConfirm: () => {
             const userId = auth.currentUser?.uid;
             if (userId) void clearActiveWorkoutDraft(userId);
+            // The in-memory link goes with the draft. Leaving it set would let
+            // the next workout inherit a session it never performed.
+            setProgramSource(null);
             navigation.dispatch(e.data.action);
           },
         });
@@ -210,10 +224,23 @@ export function WorkoutLogScreen() {
 
   useEffect(() => {
     const programSession = route.params?.programSession;
+    const programId = route.params?.programId;
+    const scheduledDateKey = route.params?.programScheduledDateKey;
     if (!programSession) return;
-    initFromProgramSession(programSession);
-    navigation.setParams({ programSession: undefined });
-  }, [initFromProgramSession, navigation, route.params?.programSession]);
+    /*
+     * All three or nothing. Opening a session without its program id and
+     * scheduled day would produce a log that cannot be matched back to the
+     * prescription — the exact gap this phase closes — so the params are
+     * cleared and the session is not opened rather than opened untraceably.
+     */
+    if (!programId || !scheduledDateKey) {
+      navigation.setParams({ programSession: undefined, programId: undefined, programScheduledDateKey: undefined });
+      ToastService.error("Could not open the session", "Its program details are missing. Open it from Today.");
+      return;
+    }
+    initFromProgramSession(programSession, programId, scheduledDateKey);
+    navigation.setParams({ programSession: undefined, programId: undefined, programScheduledDateKey: undefined });
+  }, [initFromProgramSession, navigation, route.params?.programSession, route.params?.programId, route.params?.programScheduledDateKey]);
 
 
 
@@ -221,6 +248,20 @@ export function WorkoutLogScreen() {
   const handleCompleteWithCheckIn = async () => {
     const user = auth.currentUser;
     if (!user) return;
+
+    /*
+     * The one thing that can block a save: a pain flag with no description.
+     * Re-checked here and not only in the view, because the button is not the
+     * only path into this function.
+     */
+    const validation = validateCheckInDraft(checkInDraft);
+    if (!validation.ok) {
+      ToastService.error("Almost there", validation.message);
+      return;
+    }
+    // `undefined` when the client answered nothing at all.
+    const storedCheckIn = toStoredCheckIn(checkInDraft);
+
     if (isCompletingWorkoutRef.current) return; // re-entrancy guard: blocks double-tap/double-invoke
     isCompletingWorkoutRef.current = true;
     setIsSubmittingWorkout(true);
@@ -241,7 +282,15 @@ export function WorkoutLogScreen() {
             exercises: completedExercises,
             duration,
             totalVolume,
-            checkIn: { energy, soreness, mood }
+            /*
+             * Which program session this satisfied, when it satisfied one.
+             * Absent on a freely logged workout — and that absence is exactly
+             * what stops an unrelated session from completing a prescription.
+             */
+            ...(programSource ?? {}),
+            // `undefined` when the client skipped, so the field is absent from
+            // the document rather than stored as an empty object or defaults.
+            ...(storedCheckIn ? { checkIn: storedCheckIn } : {}),
           },
           profile?.timezone
         );
@@ -252,7 +301,7 @@ export function WorkoutLogScreen() {
         totalVolume,
         durationMinutes: duration,
         personalRecords: personalRecords.length,
-        source: activePrescriptionId ? "coach_prescribed" : "manual",
+        source: programSource ? "program_session" : activePrescriptionId ? "coach_prescribed" : "manual",
       });
       setIsCheckingIn(false);
       setExercises([]); // Clear local state so beforeRemove discard alert is bypassed
@@ -284,6 +333,9 @@ export function WorkoutLogScreen() {
         .catch(() => {})
         .finally(() => {
           isCompletingWorkoutRef.current = false;
+          // The session has been logged. Anything started next is its own
+          // workout, not another attempt at this one.
+          setProgramSource(null);
         });
     } catch (error) {
       console.error("Workout submission error:", error);
@@ -319,12 +371,8 @@ export function WorkoutLogScreen() {
           totalVolume={totalVolume}
           durationMinutes={reviewDuration}
           personalRecords={reviewPersonalRecords}
-          energy={energy}
-          onEnergyChange={setEnergy}
-          soreness={soreness}
-          onSorenessChange={setSoreness}
-          mood={mood}
-          onMoodChange={setMood}
+          draft={checkInDraft}
+          onDraftChange={setCheckInDraft}
           onSubmit={handleCompleteWithCheckIn}
           onBack={() => setIsCheckingIn(false)}
           isSubmitting={isSubmittingWorkout}
@@ -547,7 +595,7 @@ const styles = StyleSheet.create({
   checkBtn: { flex: 0.5, minHeight: touchTarget.min, alignItems: "center", justifyContent: "center" },
   addSetBtn: { minHeight: touchTarget.min, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: spacing.sm, gap: spacing.xs },
   addSetText: { color: colors.primary, ...typography.label },
-  addExBtn: { minHeight: 56, backgroundColor: "#161616", paddingVertical: 18, paddingHorizontal: 20, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: "#333", gap: 10, marginBottom: spacing.xl },
+  addExBtn: { minHeight: 56, backgroundColor: colors.surface, paddingVertical: 18, paddingHorizontal: 20, borderRadius: 20, flexDirection: "row", alignItems: "center", justifyContent: "center", borderStyle: "dashed", borderWidth: 1, borderColor: "#333", gap: 10, marginBottom: spacing.xl },
   addExText: { color: colors.primary, fontWeight: "900", fontSize: 13, letterSpacing: 0.5 },
   finishBtnText: { color: colors.primaryText, ...typography.button, fontSize: 16 },
   workoutActionDock: { position: "absolute", left: spacing.lg, right: spacing.lg, bottom: 84, backgroundColor: "rgba(10,10,10,0.94)", borderRadius: radius.xl, padding: spacing.sm, borderWidth: 1, borderColor: colors.borderSubtle },

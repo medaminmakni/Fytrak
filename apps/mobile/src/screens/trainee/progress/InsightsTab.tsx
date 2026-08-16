@@ -42,7 +42,7 @@ export function InsightsTab() {
       <View style={styles.metricsHeader}>
         <View style={styles.metricsGrid}>
             <MetricBox label="FLOW" value={weeklyConsistency} unit="Days" />
-            <MetricBox label="FUEL" value={macroAdherence} unit="%" />
+            <MetricBox label="FUEL" value={macroAdherence ?? "--"} unit={macroAdherence === null ? "" : "%"} />
             <MetricBox label="BMI" value={calculateBMI} unit="" />
         </View>
       </View>

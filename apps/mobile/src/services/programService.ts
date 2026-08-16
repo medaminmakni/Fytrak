@@ -16,6 +16,7 @@ import {
 import { db } from "../config/firebase";
 import { isValidDateKey } from "../utils/dateKeys";
 import type { WorkoutSetType } from "./workoutService";
+import type { ProgramLevel } from "../features/programs/programSchedule";
 
 export type ProgramSuggestedSet = {
   type: WorkoutSetType;
@@ -25,6 +26,8 @@ export type ProgramSuggestedSet = {
 };
 
 export type ProgramSessionExercise = {
+  /** Stable identity. Never array position — reordering must not re-identify. */
+  id?: string;
   name: string;
   instructions?: string;
   restTimeSec?: number;
@@ -65,7 +68,17 @@ export type Program = {
   coachName: string;
   title: string;
   description: string;
-  level: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | "EXPERT";
+  /**
+   * Descriptive metadata the coach chooses. It NEVER changes sets, reps, load,
+   * exercise selection, progression or schedule — Fytrak stores coaching
+   * decisions, it does not make them.
+   *
+   * `EXPERT` was removed: it sat in this union while the picker offered three
+   * options, so the type promised a value no coach could select and no screen
+   * could render. Legacy documents carrying it still load; `programLevelLabel`
+   * reports them as "Level not set" rather than inventing a fourth rung.
+   */
+  level: ProgramLevel;
   durationWeeks: number;
   weeks: ProgramWeek[];
   assignedAt: any;

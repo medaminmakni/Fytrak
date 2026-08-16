@@ -19,6 +19,7 @@ import { savePrescribedMeal, CoachTemplate, subscribeToCoachTemplates } from "..
 import { auth } from "../../config/firebase";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { parseScheduleDateInput } from "../../features/plans/scheduleInput";
+import { saveAdjustment } from "../../services/planRevisionService";
 import { Typography } from "../../components/Typography";
 import { useFoodSearch } from "../../hooks/useFoodSearch";
 import type { FoodItem } from "../../services/nutritionSearchService";
@@ -26,11 +27,21 @@ import type { FoodItem } from "../../services/nutritionSearchService";
 export function PrescribeMealScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { traineeId = "", traineeName = "" } = route.params ?? {};
+    const { traineeId = "", traineeName = "", initialDateKey = "" } = route.params ?? {};
+    // Present only via Adjust plan; undefined is the unchanged direct flow.
+    const revision = route.params?.revision ?? null;
+    const isAdjustment = Boolean(revision);
 
     const [title, setTitle] = useState("");
     // Blank = unscheduled, preserving the pre-Phase-D behaviour.
-    const [scheduledDate, setScheduledDate] = useState("");
+    /*
+     * Seeded and locked for an adjustment: the revision record and this
+     * prescription must name the same day, and an editable field is how the
+     * two silently diverge.
+     */
+    const [scheduledDate, setScheduledDate] = useState(
+        revision?.effectiveFromDateKey ?? initialDateKey
+    );
     const [description, setDescription] = useState("");
     const [macros, setMacros] = useState({ calories: 0, protein: 0, carbs: 0, fats: 0 });
 
@@ -90,21 +101,45 @@ export function PrescribeMealScreen() {
             return;
         }
 
+        // An adjustment must carry everything its revision record needs, or it
+        // would be written pointing at nothing.
+        if (revision && (!revision.effectiveFromDateKey || !revision.reason?.trim())) {
+            ToastService.error("Missing adjustment details", "Start again from Adjust plan.");
+            return;
+        }
+
         try {
             setIsSubmitting(true);
             const user = auth.currentUser;
             if (!user) throw new Error("No coach session");
 
-            await savePrescribedMeal(traineeId, {
+            const mealDoc = {
                 coachId: user.uid,
                 coachName: (user as any).displayName || "Your Coach",
                 title: title.trim(),
                 description: description.trim(),
                 macros: macros,
                 isApplied: false
-            }, schedule.scheduledDateKey);
+            };
 
-            if (saveAsTemplate) {
+            if (revision) {
+                // One batch: the prescription, and the revision pointing at it.
+                await saveAdjustment(
+                    {
+                        traineeId,
+                        kind: "nutrition",
+                        effectiveFromDateKey: revision.effectiveFromDateKey,
+                        reason: revision.reason,
+                        summary: revision.summary ?? "",
+                        traineeTimezone: revision.traineeTimezone ?? null,
+                    },
+                    { kind: "nutrition", meal: mealDoc },
+                );
+            } else {
+                await savePrescribedMeal(traineeId, mealDoc, schedule.scheduledDateKey);
+            }
+
+            if (saveAsTemplate && !revision) {
                 const { saveCoachTemplate } = require("../../services/userSession");
                 await saveCoachTemplate(user.uid, {
                     title: title.trim(),
@@ -113,13 +148,24 @@ export function PrescribeMealScreen() {
                 });
             }
 
-            ToastService.success("Nutrition assigned", schedule.scheduledDateKey
+            if (revision) {
+                ToastService.success(
+                    "Adjustment saved",
+                    `Scheduled for ${revision.effectiveFromDateKey}. That day only — every other day is unchanged.`,
+                );
+            } else {
+                ToastService.success("Nutrition assigned", schedule.scheduledDateKey
                     ? `Scheduled for ${schedule.scheduledDateKey}. Your client will see it as that day's nutrition plan.`
                     : "Unscheduled — your client will see this plan in Nutrition and can apply the targets.");
-            navigation.goBack();
+            }
+            if (revision) navigation.pop(2);
+            else navigation.goBack();
         } catch (error) {
             console.error(error);
-            ToastService.error("Error", "Failed to assign plan.");
+            ToastService.error(
+                "Error",
+                error instanceof Error ? error.message : "Failed to assign plan.",
+            );
         } finally {
             setIsSubmitting(false);
         }
@@ -147,8 +193,8 @@ export function PrescribeMealScreen() {
                             style={styles.actionCard}
                             onPress={() => templates.length > 0 ? setLibModalVisible(true) : ToastService.error("Library Empty", "Save a meal plan first.")}
                         >
-                            <Ionicons name="library" size={20} color="#4ade80" />
-                            <Typography variant="label" color="#4ade80">LIBRARY</Typography>
+                            <Ionicons name="library" size={20} color={colors.textSecondary} />
+                            <Typography variant="label" color={colors.primary}>Library</Typography>
                         </Pressable>
                     </View>
 
@@ -190,7 +236,7 @@ export function PrescribeMealScreen() {
                     {/* PLAN CORE */}
                     <View style={styles.card}>
                         <View style={styles.cardHeader}>
-                            <Ionicons name="leaf" size={18} color="#4ade80" />
+                            <Ionicons name="leaf" size={18} color={colors.textSecondary} />
                             <Typography variant="h2">Plan Core</Typography>
                         </View>
                         <View style={styles.inputGroup}>
@@ -205,20 +251,23 @@ export function PrescribeMealScreen() {
                         </View>
                         <View style={styles.inputGroup}>
                             <Typography variant="label" color={colors.textMuted} style={{ fontSize: 11 }}>
-                                SCHEDULE FOR (OPTIONAL)
+                                {isAdjustment ? "REPLACING THE PLAN FOR" : "SCHEDULE FOR (OPTIONAL)"}
                             </Typography>
                             <TextInput
                                 placeholder="YYYY-MM-DD"
                                 placeholderTextColor={colors.textDim}
                                 style={styles.textInput}
                                 value={scheduledDate}
+                                editable={!isAdjustment}
                                 onChangeText={setScheduledDate}
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 keyboardType="numbers-and-punctuation"
                             />
                             <Typography variant="label" color={colors.textDim} style={{ fontSize: 11 }}>
-                                {scheduledDate.trim()
+                                {isAdjustment
+                                    ? `Scheduled for ${scheduledDate} — this one day only. Later days are unchanged.`
+                                    : scheduledDate.trim()
                                     ? `Scheduled for ${scheduledDate.trim()} — nutrition only; the workout plan is unaffected.`
                                     : "Unscheduled — shown in your client's nutrition list, not tied to a day."}
                             </Typography>
@@ -239,42 +288,48 @@ export function PrescribeMealScreen() {
                     {/* MACRO ARCHITECTURE */}
                     <View style={styles.card}>
                         <View style={styles.cardHeader}>
-                            <Ionicons name="analytics" size={18} color="#fbbf24" />
+                            <Ionicons name="analytics" size={18} color={colors.textSecondary} />
                             <Typography variant="h2">Macro Architecture</Typography>
                         </View>
                         <View style={styles.macroGrid}>
                             <MacroField label="CALORIES" value={macros.calories.toString()} onChange={(v: string) => updateMacro("calories", v)} color="#fbbf24" />
-                            <MacroField label="PROTEIN" value={macros.protein.toString()} onChange={(v: string) => updateMacro("protein", v)} color="#4ade80" />
+                            <MacroField label="PROTEIN" value={macros.protein.toString()} onChange={(v: string) => updateMacro("protein", v)} color={colors.textSecondary} />
                         </View>
                         <View style={styles.macroGrid}>
                             <MacroField label="CARBS" value={macros.carbs.toString()} onChange={(v: string) => updateMacro("carbs", v)} color={colors.primary} />
-                            <MacroField label="FATS" value={macros.fats.toString()} onChange={(v: string) => updateMacro("fats", v)} color="#f87171" />
+                            <MacroField label="FATS" value={macros.fats.toString()} onChange={(v: string) => updateMacro("fats", v)} color={colors.textSecondary} />
                         </View>
                     </View>
 
-                    {/* GLOBAL SYNC */}
-                    <Pressable
-                        style={[styles.card, saveAsTemplate && { borderColor: '#4ade80' }]}
-                        onPress={() => setSaveAsTemplate(!saveAsTemplate)}
-                    >
-                        <View style={styles.templateRow}>
-                            <Ionicons name={saveAsTemplate ? "cloud-done" : "cloud-upload-outline"} size={22} color={saveAsTemplate ? "#4ade80" : colors.iconFaint} />
-                            <View style={{ flex: 1 }}>
-                                <Typography variant="h2" style={{ fontSize: 15 }}>Sync to Library</Typography>
-                                <Typography variant="label" color={colors.textMuted}>Make this plan available for other trainees.</Typography>
+                    {/* Template saving is intentionally excluded from an
+                        adjustment. It is a third, non-atomic write and must not
+                        turn a successful adjustment into a retryable error. */}
+                    {!isAdjustment ? (
+                        <Pressable
+                            style={[styles.card, saveAsTemplate && { borderColor: colors.primary }]}
+                            onPress={() => setSaveAsTemplate(!saveAsTemplate)}
+                        >
+                            <View style={styles.templateRow}>
+                                <Ionicons name={saveAsTemplate ? "cloud-done" : "cloud-upload-outline"} size={22} color={saveAsTemplate ? colors.primary : colors.textTertiary} />
+                                <View style={{ flex: 1 }}>
+                                    <Typography variant="h2" style={{ fontSize: 15 }}>Sync to Library</Typography>
+                                    <Typography variant="label" color={colors.textMuted}>Make this plan available for other trainees.</Typography>
+                                </View>
                             </View>
-                        </View>
-                    </Pressable>
+                        </Pressable>
+                    ) : null}
 
                     <View style={styles.footer}>
                         <Pressable
-                            style={[styles.primaryAction, { backgroundColor: '#4ade80' }, isSubmitting && { opacity: 0.7 }]}
+                            style={[styles.primaryAction, { backgroundColor: colors.primary }, isSubmitting && { opacity: 0.7 }]}
                             onPress={handleSave}
                             disabled={isSubmitting}
                         >
                             {isSubmitting ? <ActivityIndicator color="#000" /> : (
                                 <>
-                                    <Typography style={{ color: "#000", fontWeight: '900', fontSize: 14 }}>ASSIGN NUTRITION</Typography>
+                                    <Typography style={{ color: "#000", fontWeight: '900', fontSize: 14 }}>
+                                        {isAdjustment ? "SAVE ADJUSTMENT" : "ASSIGN NUTRITION"}
+                                    </Typography>
                                     <Ionicons name="send" size={16} color="#000" />
                                 </>
                             )}
@@ -305,7 +360,7 @@ export function PrescribeMealScreen() {
                                         <Typography variant="h2">{t.title}</Typography>
                                         <Typography variant="label" color={colors.textMuted}>{t.data.macros?.calories || 0} kcal | {t.data.macros?.protein || 0}g P</Typography>
                                     </View>
-                                    <Ionicons name="add-circle" size={24} color="#4ade80" />
+                                    <Ionicons name="add-circle" size={24} color={colors.textSecondary} />
                                 </Pressable>
                             ))}
                         </ScrollView>
@@ -335,24 +390,24 @@ const styles = StyleSheet.create({
     scroll: { paddingBottom: 100, gap: 16, marginTop: 10 },
     
     topActionRow: { flexDirection: 'row', gap: 12 },
-    actionCard: { flex: 1, backgroundColor: '#161616', borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#333' },
+    actionCard: { flex: 1, backgroundColor: colors.surface, borderRadius: 16, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#333' },
 
-    card: { backgroundColor: "#161616", borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#333", gap: 16 },
+    card: { backgroundColor: colors.surface, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: "#333", gap: 16 },
     cardHeader: { flexDirection: "row", alignItems: "center", gap: 10 },
     
-    searchBarWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', borderRadius: 16, paddingHorizontal: 16, height: 50, gap: 12, borderWidth: 1, borderColor: '#1c1c1e' },
+    searchBarWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderRadius: 16, paddingHorizontal: 16, height: 50, gap: 12, borderWidth: 1, borderColor: colors.surfaceInset },
     searchIcon: { marginEnd: 0 },
     searchInput: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
     
     resultsList: { gap: 8, marginTop: 4 },
-    resultItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0a0a0a', borderRadius: 16, padding: 12, gap: 12, borderWidth: 1, borderColor: '#1c1c1e' },
-    resultIconBg: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
+    resultItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bg, borderRadius: 16, padding: 12, gap: 12, borderWidth: 1, borderColor: colors.surfaceInset },
+    resultIconBg: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
 
     inputGroup: { gap: 8 },
-    textInput: { backgroundColor: '#0a0a0a', borderRadius: 16, padding: 16, color: '#fff', fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: '#1c1c1e' },
+    textInput: { backgroundColor: colors.bg, borderRadius: 16, padding: 16, color: '#fff', fontSize: 16, fontWeight: '700', borderWidth: 1, borderColor: colors.surfaceInset },
 
     macroGrid: { flexDirection: 'row', gap: 12 },
-    macroBox: { flex: 1, backgroundColor: '#0a0a0a', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#1c1c1e', gap: 4 },
+    macroBox: { flex: 1, backgroundColor: colors.bg, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: colors.surfaceInset, gap: 4 },
     macroInput: { fontSize: 20, fontWeight: '900', textAlign: 'center', padding: 0 },
 
     templateRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -362,8 +417,8 @@ const styles = StyleSheet.create({
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: '#000', borderTopLeftRadius: 32, borderTopRightRadius: 32, height: '75%', padding: 24, borderWidth: 1, borderColor: '#333' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center' },
-    modalSearch: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', borderRadius: 16, paddingHorizontal: 16, height: 50, gap: 12, borderWidth: 1, borderColor: '#222', marginBottom: 20 },
+    closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+    modalSearch: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 16, paddingHorizontal: 16, height: 50, gap: 12, borderWidth: 1, borderColor: '#222', marginBottom: 20 },
     modalSearchInput: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '600' },
-    modalItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', padding: 18, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: '#222' },
+    modalItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, padding: 18, borderRadius: 20, marginBottom: 12, borderWidth: 1, borderColor: '#222' },
 });

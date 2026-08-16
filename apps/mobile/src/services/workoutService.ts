@@ -24,10 +24,15 @@ import { dailyReportActivityPatch, dailyReportRef } from "./dailyReportService";
 import type { WorkoutSetType, WorkoutSet, WorkoutLog, PrescribedWorkout } from "../types/domain";
 export type { WorkoutSetType, WorkoutSet, WorkoutLog, PrescribedWorkout };
 
+/**
+ * @deprecated Superseded by `StoredCheckIn` in features/workouts/checkIn.ts,
+ * where every field is optional because an unanswered question is stored as an
+ * absent key rather than a default value. Kept only for any old import path.
+ */
 export type WorkoutCheckIn = {
-  energy: number;
-  soreness: number;
-  mood: number;
+  energy?: number;
+  soreness?: number;
+  mood?: number;
 };
 
 const usersCollection = "users";
@@ -66,9 +71,36 @@ export const saveWorkoutLog = async (
     dailyReportActivityPatch(uid, dateContext, "Workout"),
     { merge: true }
   );
+  /*
+   * Pain is denormalised onto the summary in the SAME batch as the workout, so
+   * the coach's queue can never show a pain report for a session that failed to
+   * save, or miss one that did.
+   *
+   * The roster already reads this document for every client, so surfacing pain
+   * costs no extra reads and needs no listener per client — which matters
+   * because V0 has no scheduler and no functions to do it server-side.
+   *
+   * A session WITHOUT pain deliberately writes nothing here: it must not clear
+   * a report the coach has not acted on yet.
+   */
+  const painFlagged = workout.checkIn?.painFlagged === true;
+  const painNote = typeof workout.checkIn?.painNote === "string"
+    ? workout.checkIn.painNote.trim().slice(0, 200)
+    : "";
+
   batch.update(doc(db, usersCollection, uid), {
     "clientSummary.workoutsLast7Days": Math.min(100, recentSnapshot.size + 1),
     "clientSummary.lastWorkoutAt": serverTimestamp(),
+    // The client-local day, pinned at write time. Deriving it later would
+    // re-date every historical session if the client ever moves timezone.
+    "clientSummary.lastWorkoutDateKey": dateContext.dateKey,
+    ...(painFlagged
+      ? {
+          "clientSummary.lastPainAt": serverTimestamp(),
+          "clientSummary.lastPainDateKey": dateContext.dateKey,
+          ...(painNote ? { "clientSummary.lastPainNote": painNote } : {}),
+        }
+      : {}),
     "clientSummary.updatedAt": serverTimestamp(),
   });
   await batch.commit();
@@ -163,6 +195,7 @@ export const savePrescribedWorkout = async (
       : {}),
     assignedAt: serverTimestamp(),
   });
+
 };
 
 export const subscribeToPrescribedWorkouts = (traineeId: string, callback: (workouts: PrescribedWorkout[]) => void) => {

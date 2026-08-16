@@ -13,6 +13,7 @@
 import type { PrescribedMeal, PrescribedWorkout } from "../../types/domain";
 import type { Program, ProgramSession } from "../../services/programService";
 import { isValidDateKey } from "../../utils/dateKeys";
+import { selectActiveProgram } from "../programs/programSchedule";
 import type { DatedCandidate, ScheduledProgram, ScheduledProgramSession } from "./planResolution";
 
 /** Additive scheduling fields. Absent on every pre-Phase-D document. */
@@ -95,6 +96,33 @@ export const toScheduledProgram = (
     publishedAtMillis: toMillis(program.publishedAt),
     sessions,
   };
+};
+
+/**
+ * The ONE program that may place a session on `dateKey`.
+ *
+ * Returns an array of zero or one so it drops straight into the existing
+ * `toScheduledPrograms(...)` call sites.
+ *
+ * Every resolution path used to receive EVERY program the client had ever been
+ * assigned. Two overlapping published programs would both offer a session for
+ * the same date, and `resolvePlanDimension` would pick between them by
+ * publish-time tie-break — a rule nobody had decided and nothing documented.
+ * `selectActiveProgram` makes it explicit: the most recently assigned program
+ * covering that date wins, and older ones remain readable as history.
+ */
+export const toActiveScheduledPrograms = (
+  programs: ScheduledProgramDoc[],
+  dateKey: string
+): ScheduledProgram<ProgramSession>[] => {
+  const active = selectActiveProgram(
+    (programs ?? []).map((program) => ({
+      ...program,
+      assignedAtMillis: toMillis(program.assignedAt) ?? 0,
+    })),
+    dateKey
+  );
+  return active ? toScheduledPrograms([active as ScheduledProgramDoc]) : [];
 };
 
 export const toScheduledPrograms = (

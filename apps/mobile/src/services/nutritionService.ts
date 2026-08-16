@@ -235,6 +235,7 @@ export const savePrescribedMeal = async (
       : {}),
     assignedAt: serverTimestamp(),
   });
+
 };
 
 export const subscribeToPrescribedMeals = (traineeId: string, callback: (meals: PrescribedMeal[]) => void) => {

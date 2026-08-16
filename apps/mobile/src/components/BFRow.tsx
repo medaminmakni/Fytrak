@@ -31,12 +31,12 @@ export function BFRow({ label, male, female, desc, onSelect }: BFRowProps) {
 
 const styles = StyleSheet.create({
   bfRow: { 
-    backgroundColor: "#1c1c1e", 
+    backgroundColor: colors.surfaceInset,
     borderRadius: 16, 
     padding: 16, 
     marginBottom: 12, 
     borderWidth: 1, 
-    borderColor: "#2c2c2e" 
+    borderColor: colors.surfaceInset
   },
   bfRowHeader: { 
     flexDirection: "row", 
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     fontWeight: "900" 
   },
   bfRowDesc: { 
-    color: colors.textMuted, 
+    color: colors.textMuted,
     fontSize: 12, 
     fontWeight: "500" 
   },

@@ -1,25 +1,20 @@
-import { Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useNavigation } from "@react-navigation/native";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { saveAssignmentStatus } from "../../services/userSession";
 import { auth } from "../../config/firebase";
 import { ToastService } from "../../components/Toast";
-import { logOut } from "../../services/auth";
+import type { RootStackNavigation } from "../../navigation/types";
 
 type PendingCoachScreenProps = {
   coachName: string | null;
 };
 
 export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
-  const handleLogout = async () => {
-    try {
-      await logOut();
-      ToastService.info("Signed out", "Your Fytrak session has been closed.");
-    } catch (error) {
-      ToastService.error("Sign out failed", "Please try again.");
-    }
-  };
+  const navigation = useNavigation<RootStackNavigation>();
+  const returnToDashboard = () => navigation.navigate("TraineeTabs");
 
   const handleCancelRequest = () => {
     ToastService.confirm({
@@ -32,6 +27,7 @@ export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
         if (auth.currentUser) {
           await saveAssignmentStatus(auth.currentUser.uid, "unassigned");
           ToastService.info("Request cancelled", "You can choose another coach anytime.");
+          returnToDashboard();
         }
       },
     });
@@ -41,9 +37,15 @@ export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
     <ScreenShell
       title="Request sent"
       subtitle="Waiting for coach approval"
+      leftActionIcon="arrow-back"
+      onLeftAction={returnToDashboard}
       contentStyle={styles.shellContent}
     >
-      <View style={styles.container}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.container}>
         <View style={styles.card}>
           <View style={styles.statusBadge}>
             <ActivityIndicator color={colors.primary} size="small" />
@@ -63,13 +65,13 @@ export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
         </View>
 
         <View style={styles.actions}>
-          <Pressable style={styles.logoutBtn} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color={colors.textMuted} />
-            <Text style={styles.logoutBtnText}>LOG OUT</Text>
+          <Pressable style={styles.returnBtn} onPress={returnToDashboard}>
+            <Ionicons name="home-outline" size={20} color={colors.textMuted} />
+            <Text style={styles.returnBtnText}>BACK TO DASHBOARD</Text>
           </Pressable>
 
           <Pressable style={styles.cancelBtn} onPress={handleCancelRequest}>
-            <Ionicons name="close-circle-outline" size={20} color="#ff4444" />
+            <Ionicons name="close-circle-outline" size={20} color={colors.danger} />
             <Text style={styles.cancelBtnText}>CANCEL REQUEST</Text>
           </Pressable>
         </View>
@@ -80,7 +82,8 @@ export function PendingCoachScreen({ coachName }: PendingCoachScreenProps) {
             Once approved, your workout plans and advanced tracking will unlock automatically.
           </Text>
         </View>
-      </View>
+        </View>
+      </ScrollView>
     </ScreenShell>
   );
 }
@@ -101,18 +104,21 @@ function FeatureItem({ icon, label, sub }: { icon: keyof typeof Ionicons.glyphMa
 
 const styles = StyleSheet.create({
   shellContent: {
-    paddingBottom: 20,
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 24,
   },
   container: {
     paddingTop: 10,
     gap: 20,
   },
   card: {
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 28,
     padding: 24,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     alignItems: "center",
     gap: 16,
   },
@@ -156,17 +162,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 16,
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     padding: 16,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   iconContainer: {
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: "#2c2c2e",
+    backgroundColor: colors.surfaceInset,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -187,18 +193,18 @@ const styles = StyleSheet.create({
   actions: {
     gap: 12,
   },
-  logoutBtn: {
+  returnBtn: {
     height: 56,
     borderRadius: 16,
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
   },
-  logoutBtnText: {
+  returnBtnText: {
     color: colors.textMuted,
     fontWeight: "800",
     fontSize: 14,
@@ -216,7 +222,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cancelBtnText: {
-    color: "#ff4444",
+    color: colors.danger,
     fontWeight: "800",
     fontSize: 14,
     letterSpacing: 0.5,
@@ -225,11 +231,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     padding: 16,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   infoText: {
     flex: 1,

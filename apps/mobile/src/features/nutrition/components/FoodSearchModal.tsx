@@ -83,7 +83,7 @@ export function FoodSearchModal({
                 </View>
               ) : (
                 <View style={styles.initialState}>
-                  <Ionicons name="restaurant-outline" size={48} color="#1c1c1e" />
+                  <Ionicons name="restaurant-outline" size={48} color={colors.surfaceInset} />
                   <Typography variant="label" color={colors.textDim} style={{ marginTop: 12 }}>
                     Type at least 2 characters to search
                   </Typography>
@@ -103,7 +103,7 @@ export function FoodSearchModal({
                       <Ionicons 
                         name="fast-food" 
                         size={18} 
-                        color={food.isVerified ? colors.primary : colors.textDim} 
+                        color={food.isVerified ? colors.primary : colors.textDim}
                       />
                     </View>
                   )}
@@ -149,7 +149,7 @@ const styles = StyleSheet.create({
     height: "90%", 
     padding: 24, 
     borderWidth: 1, 
-    borderColor: "#1c1c1e" 
+    borderColor: colors.surfaceInset
   },
   modalHeader: { 
     flexDirection: "row", 
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
     width: 44, 
     height: 44, 
     borderRadius: 14, 
-    backgroundColor: "#111", 
+    backgroundColor: colors.surface,
     alignItems: "center", 
     justifyContent: "center",
     borderWidth: 1,
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
   searchBarWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#111",
+    backgroundColor: colors.surface,
     borderRadius: 16,
     paddingHorizontal: 16,
     height: 56,
@@ -199,12 +199,12 @@ const styles = StyleSheet.create({
   foodSelectItem: { 
     flexDirection: "row", 
     alignItems: "center", 
-    backgroundColor: "#0a0a0a", 
+    backgroundColor: colors.bg,
     borderRadius: 20, 
     padding: 16, 
     marginBottom: 12, 
     borderWidth: 1, 
-    borderColor: "#1c1c1e",
+    borderColor: colors.surfaceInset,
     gap: 16
   },
   foodThumb: { 
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 12,
-    backgroundColor: "#111",
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     flexShrink: 1
   },
   modalItemSub: { 
-    color: colors.textMuted, 
+    color: colors.textMuted,
     fontSize: 12, 
     fontWeight: "600" 
   },
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     flexDirection: "row", 
     alignItems: "center", 
     gap: 4, 
-    backgroundColor: colors.primary, 
+    backgroundColor: colors.primary,
     paddingHorizontal: 8, 
     paddingVertical: 3, 
     borderRadius: 8 
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     width: 36, 
     height: 36, 
     borderRadius: 18, 
-    backgroundColor: colors.primary, 
+    backgroundColor: colors.primary,
     alignItems: "center", 
     justifyContent: "center" 
   },

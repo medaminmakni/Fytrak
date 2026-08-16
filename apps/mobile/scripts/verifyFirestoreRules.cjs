@@ -975,6 +975,500 @@ async function main() {
       { ...programBody, startDateKey: "2026-08-03" }
     ));
 
+    // -----------------------------------------------------------------
+    // PROGRAM PRESCRIPTIONS AND PROGRAM-SOURCED WORKOUT LOGS
+    // -----------------------------------------------------------------
+    await seedAssignedRelationship(testEnv);
+    const progCoachDb = testEnv.authenticatedContext("coach_1").firestore();
+    const progTraineeDb = testEnv.authenticatedContext("trainee_1").firestore();
+    const progOtherCoachDb = testEnv.authenticatedContext("coach_2").firestore();
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users", "coach_2"), { role: "coach" }, { merge: true });
+      await setDoc(doc(db, "users", "trainee_1", "programs", "prog_live"), {
+        ...programBody, startDateKey: "2026-08-16", status: "published",
+      });
+    });
+
+    // The assigned coach authors the prescription.
+    await assertSucceeds(setDoc(
+      doc(progCoachDb, "users", "trainee_1", "programs", "prog_new"),
+      { ...programBody, startDateKey: "2026-09-01", status: "published" }
+    ));
+    // An unrelated coach cannot.
+    await assertFails(setDoc(
+      doc(progOtherCoachDb, "users", "trainee_1", "programs", "prog_outsider"),
+      { ...programBody, startDateKey: "2026-09-01", status: "published" }
+    ));
+    // The TRAINEE can read their program...
+    await assertSucceeds(getDoc(doc(progTraineeDb, "users", "trainee_1", "programs", "prog_live")));
+    // ...but must never modify the prescription's contents.
+    await assertFails(setDoc(
+      doc(progTraineeDb, "users", "trainee_1", "programs", "prog_forged"),
+      { ...programBody, startDateKey: "2026-09-01" }
+    ));
+    await assertFails(updateDoc(
+      doc(progTraineeDb, "users", "trainee_1", "programs", "prog_live"),
+      { title: "Easier program" }
+    ));
+    // Including marking a session complete — which is WHY completion is derived
+    // from the workout log instead of written onto the program.
+    await assertFails(updateDoc(
+      doc(progTraineeDb, "users", "trainee_1", "programs", "prog_live"),
+      { weeks: [] }
+    ));
+    // Programs are create-only in V0, so not even the coach may edit one.
+    await assertFails(updateDoc(
+      doc(progCoachDb, "users", "trainee_1", "programs", "prog_live"),
+      { title: "Renamed" }
+    ));
+
+    // ---- Program-sourced workout logs -------------------------------------
+    const validSource = {
+      sourceType: "program",
+      sourceProgramId: "prog_live",
+      sourceProgramSessionId: "sess_1",
+      sourceScheduledDateKey: "2026-08-18",
+    };
+    const logBody = { name: "Upper Push A", exercises: [], createdAt: serverTimestamp() };
+
+    // A plain workout, with no claim at all.
+    await assertSucceeds(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_plain"), logBody));
+    // A well-formed program claim.
+    await assertSucceeds(setDoc(
+      doc(progTraineeDb, "users", "trainee_1", "workouts", "w_program"),
+      { ...logBody, ...validSource }
+    ));
+
+    // HALF-POPULATED CLAIMS ARE REFUSED — a claim pointing at nothing is the
+    // state this phase exists to prevent.
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_a"),
+      { ...logBody, sourceType: "program" }));
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_b"),
+      { ...logBody, ...validSource, sourceProgramId: "" }));
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_c"),
+      { ...logBody, ...validSource, sourceProgramSessionId: "" }));
+    // Malformed or non-existent dates.
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_d"),
+      { ...logBody, ...validSource, sourceScheduledDateKey: "18/08/2026" }));
+    // Out-of-range month and day. The original pattern accepted both, and this
+    // is the assertion that caught it once the suite was actually run.
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_e"),
+      { ...logBody, ...validSource, sourceScheduledDateKey: "2026-13-01" }));
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_e2"),
+      { ...logBody, ...validSource, sourceScheduledDateKey: "2026-00-01" }));
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_e3"),
+      { ...logBody, ...validSource, sourceScheduledDateKey: "2026-01-32" }));
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_e4"),
+      { ...logBody, ...validSource, sourceScheduledDateKey: "2026-01-00" }));
+    // An unknown source kind.
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_f"),
+      { ...logBody, ...validSource, sourceType: "nutrition" }));
+    // Source fields without the discriminator.
+    await assertFails(setDoc(doc(progTraineeDb, "users", "trainee_1", "workouts", "w_g"),
+      { ...logBody, sourceProgramId: "prog_live" }));
+
+    // The coach can READ the log — that is how completion is reviewed — but
+    // cannot write one on the trainee's behalf.
+    await assertSucceeds(getDoc(doc(progCoachDb, "users", "trainee_1", "workouts", "w_program")));
+    await assertFails(setDoc(
+      doc(progCoachDb, "users", "trainee_1", "workouts", "w_by_coach"),
+      { ...logBody, ...validSource }
+    ));
+
+    // -----------------------------------------------------------------
+    // PHASE 4: PLAN ADJUSTMENT AND HISTORICAL IMMUTABILITY
+    //
+    // An adjustment APPENDS a new dated prescription; it never edits one. The
+    // coach update branch is gone from all three plan collections, so a
+    // prescription for a day the client already trained cannot be rewritten
+    // after the fact.
+    // -----------------------------------------------------------------
+
+    await seedAssignedRelationship(testEnv);
+    const adjCoachDb = testEnv.authenticatedContext("coach_1").firestore();
+    const adjTraineeDb = testEnv.authenticatedContext("trainee_1").firestore();
+    const adjOutsiderDb = testEnv.authenticatedContext("coach_2").firestore();
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users", "coach_2"), { role: "coach" }, { merge: true });
+      // An existing prescription and program to attempt edits against.
+      await setDoc(doc(db, "users", "trainee_1", "prescribedWorkouts", "existing_w"), {
+        ...workoutBody, scheduledDateKey: "2026-09-01", status: "published",
+      });
+      await setDoc(doc(db, "users", "trainee_1", "prescribed_meals", "existing_m"), {
+        coachId: "coach_1", coachName: "Coach One", title: "Cut day",
+        description: "", macros: { calories: 2000, protein: 160, carbs: 200, fats: 60 },
+        isApplied: false, scheduledDateKey: "2026-09-01", status: "published",
+      });
+      await setDoc(doc(db, "users", "trainee_1", "programs", "existing_p"), {
+        ...programBody, startDateKey: "2026-08-03", status: "published",
+      });
+    });
+
+    // The assigned coach may CREATE a dated workout and a dated meal.
+    await assertSucceeds(setDoc(
+      doc(adjCoachDb, "users", "trainee_1", "prescribedWorkouts", "adj_w"),
+      { ...workoutBody, scheduledDateKey: "2026-09-02", status: "published" }
+    ));
+    await assertSucceeds(setDoc(
+      doc(adjCoachDb, "users", "trainee_1", "prescribed_meals", "adj_m"),
+      {
+        coachId: "coach_1", coachName: "Coach One", title: "Revised cut",
+        description: "", macros: { calories: 1900, protein: 170, carbs: 180, fats: 55 },
+        isApplied: false, scheduledDateKey: "2026-09-02", status: "published",
+        assignedAt: serverTimestamp(),
+      }
+    ));
+    // An assigned coach cannot stamp another coach's identity onto content.
+    await assertFails(setDoc(
+      doc(adjCoachDb, "users", "trainee_1", "prescribedWorkouts", "forged_author_w"),
+      { ...workoutBody, coachId: "coach_2", scheduledDateKey: "2026-09-02", status: "published" }
+    ));
+
+    // An UNASSIGNED coach may not create either.
+    await assertFails(setDoc(
+      doc(adjOutsiderDb, "users", "trainee_1", "prescribedWorkouts", "outsider_w"),
+      { ...workoutBody, coachId: "coach_2", scheduledDateKey: "2026-09-03", status: "published" }
+    ));
+    await assertFails(setDoc(
+      doc(adjOutsiderDb, "users", "trainee_1", "prescribed_meals", "outsider_m"),
+      { coachId: "coach_2", title: "Nope", isApplied: false, scheduledDateKey: "2026-09-03" }
+    ));
+
+    // HISTORICAL IMMUTABILITY: the coach cannot UPDATE anything that exists.
+    await assertFails(updateDoc(
+      doc(adjCoachDb, "users", "trainee_1", "prescribedWorkouts", "existing_w"),
+      { title: "Rewritten after the fact" }
+    ));
+    await assertFails(updateDoc(
+      doc(adjCoachDb, "users", "trainee_1", "prescribedWorkouts", "existing_w"),
+      { scheduledDateKey: "2026-09-05" }
+    ));
+    await assertFails(updateDoc(
+      doc(adjCoachDb, "users", "trainee_1", "prescribed_meals", "existing_m"),
+      { title: "Rewritten after the fact" }
+    ));
+    await assertFails(updateDoc(
+      doc(adjCoachDb, "users", "trainee_1", "programs", "existing_p"),
+      { startDateKey: "2026-08-10" }
+    ));
+    await assertFails(updateDoc(
+      doc(adjCoachDb, "users", "trainee_1", "programs", "existing_p"),
+      { title: "Renamed block" }
+    ));
+
+    // The TRAINEE keeps exactly the narrow updates they had.
+    await assertSucceeds(updateDoc(
+      doc(adjTraineeDb, "users", "trainee_1", "prescribedWorkouts", "existing_w"),
+      { isCompleted: true, completedAt: serverTimestamp() }
+    ));
+    await assertSucceeds(updateDoc(
+      doc(adjTraineeDb, "users", "trainee_1", "prescribed_meals", "existing_m"),
+      { isApplied: true, appliedAt: serverTimestamp() }
+    ));
+    // ...and nothing wider. A trainee must not edit prescription CONTENT.
+    await assertFails(updateDoc(
+      doc(adjTraineeDb, "users", "trainee_1", "prescribedWorkouts", "existing_w"),
+      { title: "Easier session" }
+    ));
+    await assertFails(updateDoc(
+      doc(adjTraineeDb, "users", "trainee_1", "prescribedWorkouts", "existing_w"),
+      { isCompleted: true, title: "Easier session" }
+    ));
+    await assertFails(updateDoc(
+      doc(adjTraineeDb, "users", "trainee_1", "prescribed_meals", "existing_m"),
+      { macros: { calories: 4000, protein: 10, carbs: 10, fats: 10 } }
+    ));
+
+    // -----------------------------------------------------------------
+    // THE REVISION AND ITS PRESCRIPTION COMMIT TOGETHER
+    // -----------------------------------------------------------------
+    const revisionBody = {
+      traineeId: "trainee_1",
+      coachId: "coach_1",
+      kind: "workout",
+      effectiveFromDateKey: "2026-09-10",
+      prescriptionId: "batched_presc",
+      reason: "He has missed the Saturday session four weeks running.",
+      summary: "Four sessions down to three",
+      createdAt: serverTimestamp(),
+    };
+
+    // One batch: the prescription, and the revision naming it.
+    const goodBatch = writeBatch(adjCoachDb);
+    goodBatch.set(
+      doc(adjCoachDb, "users", "trainee_1", "prescribedWorkouts", "batched_presc"),
+      { ...workoutBody, scheduledDateKey: "2026-09-10", status: "published" }
+    );
+    goodBatch.set(
+      doc(adjCoachDb, "users", "trainee_1", "planRevisions", "batched_rev"),
+      revisionBody
+    );
+    await assertSucceeds(goodBatch.commit());
+
+    // A standalone revision cannot point at an existing or missing document.
+    await assertFails(setDoc(
+      doc(adjCoachDb, "users", "trainee_1", "planRevisions", "standalone_existing"),
+      { ...revisionBody, createdAt: serverTimestamp() }
+    ));
+    await assertFails(setDoc(
+      doc(adjCoachDb, "users", "trainee_1", "planRevisions", "standalone_missing"),
+      { ...revisionBody, prescriptionId: "does_not_exist", createdAt: serverTimestamp() }
+    ));
+
+    // Nutrition uses the same atomic contract and the matching collection.
+    const nutritionBatch = writeBatch(adjCoachDb);
+    nutritionBatch.set(
+      doc(adjCoachDb, "users", "trainee_1", "prescribed_meals", "batched_meal"),
+      {
+        coachId: "coach_1", coachName: "Coach One", title: "Revised cut",
+        description: "", macros: { calories: 1900, protein: 170, carbs: 180, fats: 55 },
+        isApplied: false, scheduledDateKey: "2026-09-12", status: "published",
+      }
+    );
+    nutritionBatch.set(
+      doc(adjCoachDb, "users", "trainee_1", "planRevisions", "batched_meal_rev"),
+      {
+        ...revisionBody,
+        kind: "nutrition",
+        effectiveFromDateKey: "2026-09-12",
+        prescriptionId: "batched_meal",
+        createdAt: serverTimestamp(),
+      }
+    );
+    await assertSucceeds(nutritionBatch.commit());
+
+    // MALFORMED OR INCOMPLETE REVISIONS ARE REFUSED.
+    const badRevision = async (overrides, id) => {
+      const prescriptionId = `p_${id}`;
+      const batch = writeBatch(adjCoachDb);
+      batch.set(
+        doc(adjCoachDb, "users", "trainee_1", "prescribedWorkouts", prescriptionId),
+        { ...workoutBody, scheduledDateKey: "2026-09-11", status: "published" }
+      );
+      batch.set(
+        doc(adjCoachDb, "users", "trainee_1", "planRevisions", `r_${id}`),
+        {
+          ...revisionBody,
+          effectiveFromDateKey: "2026-09-11",
+          prescriptionId,
+          ...overrides,
+          createdAt: overrides.createdAt ?? serverTimestamp(),
+        }
+      );
+      await assertFails(batch.commit());
+    };
+
+    // No prescriptionId — the empty record this whole phase removed.
+    await badRevision({ prescriptionId: "" }, "no_presc_id");
+    await badRevision({ prescriptionId: null }, "null_presc_id");
+    // No reason.
+    await badRevision({ reason: "" }, "no_reason");
+    // A "program" revision would claim a change that cannot have happened.
+    await badRevision({ kind: "program" }, "program_kind");
+    await badRevision({ kind: "diet" }, "bad_kind");
+    // Malformed or missing effective date.
+    await badRevision({ effectiveFromDateKey: "10/09/2026" }, "bad_date");
+    await badRevision({ effectiveFromDateKey: "2026-13-01" }, "bad_month");
+    // Forged authorship, or a revision filed against another trainee.
+    await badRevision({ coachId: "coach_2" }, "forged_coach");
+    await badRevision({ traineeId: "trainee_2" }, "wrong_trainee");
+    // Client-supplied timestamps, and unexpected extra keys.
+    await badRevision({ createdAt: new Date("2020-01-01") }, "backdated");
+    await badRevision({ extra: "smuggled" }, "extra_key");
+    // Bounded free text.
+    await badRevision({ reason: "x".repeat(501) }, "long_reason");
+    await badRevision({ summary: "x".repeat(501) }, "long_summary");
+    // A well-shaped revision still fails when it names a different date than
+    // the new prescription created beside it.
+    await badRevision({ effectiveFromDateKey: "2026-09-12" }, "date_mismatch");
+
+    // Append-only: a committed revision can never be edited or removed.
+    await assertFails(updateDoc(
+      doc(adjCoachDb, "users", "trainee_1", "planRevisions", "batched_rev"),
+      { reason: "Actually a different reason" }
+    ));
+    // Neither the trainee nor an unrelated coach may write one at all.
+    await assertFails(setDoc(
+      doc(adjTraineeDb, "users", "trainee_1", "planRevisions", "self_written"),
+      { ...revisionBody, coachId: "trainee_1" }
+    ));
+    await assertFails(setDoc(
+      doc(adjOutsiderDb, "users", "trainee_1", "planRevisions", "outsider_rev"),
+      { ...revisionBody, coachId: "coach_2" }
+    ));
+    // The trainee CAN read them — a plan that changed under them without
+    // explanation is the complaint this collection answers.
+    await assertSucceeds(getDoc(
+      doc(adjTraineeDb, "users", "trainee_1", "planRevisions", "batched_rev")
+    ));
+
+    // -----------------------------------------------------------------
+    // PAIN ACKNOWLEDGEMENT
+    //
+    // The CLIENT writes the pain report; the COACH clears it. A client able
+    // to write these keys could dismiss their own injury warning before the
+    // coach ever saw it, which is the one thing this signal exists to stop.
+    // -----------------------------------------------------------------
+    const painCoachDb = testEnv.authenticatedContext("coach_1").firestore();
+    const painTraineeDb = testEnv.authenticatedContext("trainee_1").firestore();
+    const otherCoachDb = testEnv.authenticatedContext("coach_2").firestore();
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      await setDoc(doc(db, "users", "trainee_1"), {
+        role: "trainee",
+        assignmentStatus: "assigned",
+        selectedCoachId: "coach_1",
+        clientSummary: { lastPainAt: new Date(), lastPainDateKey: "2026-08-04" },
+      }, { merge: true });
+      await setDoc(doc(db, "users", "coach_2"), { role: "coach" }, { merge: true });
+    });
+
+    const ackPayload = {
+      "clientSummary.lastPainAcknowledgedAt": serverTimestamp(),
+      "clientSummary.lastPainAcknowledgedByCoachId": "coach_1",
+      "clientSummary.lastPainAcknowledgedDateKey": "2026-08-04",
+    };
+
+    // The assigned coach may acknowledge.
+    await assertSucceeds(updateDoc(doc(painCoachDb, "users", "trainee_1"), ackPayload));
+
+    // An unrelated coach may not.
+    await assertFails(updateDoc(doc(otherCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedByCoachId": "coach_2",
+    }));
+
+    // The CLIENT may not acknowledge their own pain report.
+    await assertFails(updateDoc(doc(painTraineeDb, "users", "trainee_1"), ackPayload));
+
+    // The coach id must be the caller — no acknowledging on someone's behalf.
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedByCoachId": "coach_2",
+    }));
+
+    // The timestamp must be the server clock. A back-dated acknowledgement
+    // could sit before the report and silence it permanently.
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedAt": new Date("2020-01-01"),
+    }));
+
+    // The date key must be a real YYYY-MM-DD.
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedDateKey": "04/08/2026",
+    }));
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedDateKey": "2026-13-01",
+    }));
+
+    // Only the three acknowledgement keys. A coach must not ride along and
+    // rewrite the report itself, or any other part of the summary.
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainNote": "rewritten by the coach",
+    }));
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAt": serverTimestamp(),
+    }));
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      role: "coach",
+    }));
+
+    // -----------------------------------------------------------------
+    // PAIN ACKNOWLEDGEMENT MUST NAME THE REPORT IT ANSWERS
+    //
+    // `isPainPending` is `lastPainAt > lastPainAcknowledgedAt`. So an
+    // acknowledgement that does not match a real, existing report does not
+    // just do nothing — it sets the acknowledged timestamp to now, which
+    // suppresses every report the client files until the next one arrives
+    // AFTER this write. Acknowledging a day that was never reported is
+    // therefore a way to blank the queue, not a harmless no-op.
+    // -----------------------------------------------------------------
+
+    // 1. An acknowledgement matching the reported day succeeds.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "trainee_1"), {
+        role: "trainee",
+        assignmentStatus: "assigned",
+        selectedCoachId: "coach_1",
+        clientSummary: { lastPainAt: new Date(), lastPainDateKey: "2026-08-04" },
+      });
+    });
+    await assertSucceeds(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedDateKey": "2026-08-04",
+    }));
+
+    // 2. A different, perfectly well-formed date fails. This is the case the
+    //    regex alone let through: "2026-08-05" is a valid key for a day the
+    //    client never reported pain on.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "trainee_1"), {
+        role: "trainee",
+        assignmentStatus: "assigned",
+        selectedCoachId: "coach_1",
+        clientSummary: { lastPainAt: new Date(), lastPainDateKey: "2026-08-04" },
+      });
+    });
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedDateKey": "2026-08-05",
+    }));
+
+    // 3. No `lastPainDateKey` on the summary — nothing to match against, so
+    //    there is nothing to acknowledge.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "trainee_1"), {
+        role: "trainee",
+        assignmentStatus: "assigned",
+        selectedCoachId: "coach_1",
+        clientSummary: { lastPainAt: new Date() },
+      });
+    });
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), ackPayload));
+
+    // 4. No `lastPainAt` — the queue has no timestamp to compare, so an
+    //    acknowledgement here would be answering a report that does not exist.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "trainee_1"), {
+        role: "trainee",
+        assignmentStatus: "assigned",
+        selectedCoachId: "coach_1",
+        clientSummary: { lastPainDateKey: "2026-08-04" },
+      });
+    });
+    await assertFails(updateDoc(doc(painCoachDb, "users", "trainee_1"), ackPayload));
+
+    // 5 and 6. Restore a valid report, then confirm identity still holds even
+    //    when the date matches: an unrelated coach and the client themselves
+    //    are both refused.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", "trainee_1"), {
+        role: "trainee",
+        assignmentStatus: "assigned",
+        selectedCoachId: "coach_1",
+        clientSummary: { lastPainAt: new Date(), lastPainDateKey: "2026-08-04" },
+      });
+    });
+    // 5. An unrelated coach, with a correctly matched date key.
+    await assertFails(updateDoc(doc(otherCoachDb, "users", "trainee_1"), {
+      ...ackPayload,
+      "clientSummary.lastPainAcknowledgedByCoachId": "coach_2",
+    }));
+    // 6. The client, with a correctly matched date key. This is the case the
+    //    whole split exists for.
+    await assertFails(updateDoc(doc(painTraineeDb, "users", "trainee_1"), ackPayload));
+
     console.log("Firestore rules checks passed.");
   } finally {
     await testEnv.cleanup();

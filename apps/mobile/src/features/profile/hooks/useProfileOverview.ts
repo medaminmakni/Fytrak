@@ -140,10 +140,16 @@ export function useProfileOverview(): ProfileOverview {
       return;
     }
 
-    const unsubscribeProfile = subscribeToUserProfile(user.uid, (data) => {
-      setProfile(data);
-      setIsLoading(false);
-    });
+    const unsubscribeProfile = subscribeToUserProfile(
+      user.uid,
+      (data) => {
+        setProfile(data);
+        setIsLoading(false);
+      },
+      // Stop loading rather than spin forever. `profile` stays null, which this
+      // hook's consumers already treat as "nothing to show".
+      () => setIsLoading(false)
+    );
     const unsubscribeWorkouts = subscribeToWorkouts(user.uid, setWorkouts);
 
     return () => {

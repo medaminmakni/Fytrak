@@ -29,6 +29,9 @@ const chatThreadsCollection = "chatThreads";
  */
 const assignmentsCollection = "assignments";
 
+/** Internal control flow: aborts a read-only transaction without committing. */
+class NoUnreadMessagesError extends Error {}
+
 export const fetchActiveAssignmentThreadId = async (assignmentId: string): Promise<string | null> => {
   const snapshot = await getDoc(doc(db, assignmentsCollection, assignmentId));
   const data = snapshot.data();
@@ -259,7 +262,8 @@ export const markThreadRead = async (threadId: string): Promise<void> => {
   if (!uid) throw new Error("You must be signed in.");
   const threadRef = doc(db, chatThreadsCollection, threadId);
 
-  await runTransaction(db, async (transaction) => {
+  try {
+    await runTransaction(db, async (transaction) => {
     const snapshot = await transaction.get(threadRef);
     if (!snapshot.exists()) throw new Error("Conversation is unavailable.");
 
@@ -274,14 +278,19 @@ export const markThreadRead = async (threadId: string): Promise<void> => {
 
     const field = uid === thread.coachId ? "unreadByCoach" : "unreadByTrainee";
     // Nothing to do — skip the write so an idle chat screen does not churn the
-    // document (and cannot race with an incoming message for no reason).
-    if (Number(thread[field] || 0) === 0) return;
+    // document. Throwing aborts locally; returning would make the Web SDK send
+    // a read-only `verify` commit that the narrow update rules correctly deny.
+    if (Number(thread[field] || 0) === 0) throw new NoUnreadMessagesError();
 
     transaction.update(threadRef, {
       [field]: 0,
       updatedAt: serverTimestamp(),
     });
-  });
+    });
+  } catch (error) {
+    if (error instanceof NoUnreadMessagesError) return;
+    throw error;
+  }
 };
 
 export const fetchLatestThreadMessage = async (threadId: string): Promise<ChatThreadSummary | null> => {

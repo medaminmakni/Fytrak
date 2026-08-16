@@ -68,9 +68,17 @@ type CoachChatScreenProps = {
   traineeName?: string;
   /** Assignment-scoped thread id, supplied by the coach inbox when known. */
   threadId?: string;
+  /** Active relationship id, resolved to assignment.threadId when supplied. */
+  assignmentId?: string;
 };
 
-export function CoachChatScreen({ traineeId, coachId, traineeName, threadId: threadIdProp }: CoachChatScreenProps) {
+export function CoachChatScreen({
+  traineeId,
+  coachId,
+  traineeName,
+  threadId: threadIdProp,
+  assignmentId: assignmentIdProp,
+}: CoachChatScreenProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -96,6 +104,7 @@ export function CoachChatScreen({ traineeId, coachId, traineeName, threadId: thr
       ? Math.max(keyboardHeight - insets.bottom, 0)
       : keyboardHeight;
   const [resolvedThreadId, setResolvedThreadId] = useState<string | null>(threadIdProp || null);
+  const [isResolvingThread, setIsResolvingThread] = useState(!threadIdProp && Boolean(assignmentIdProp));
   const currentUid = useCurrentUser();
 
   /*
@@ -124,25 +133,38 @@ export function CoachChatScreen({ traineeId, coachId, traineeName, threadId: thr
     };
   }, []);
 
-  // The coach arrives with the active thread id from the inbox. The trainee
-  // resolves assignment.threadId from the backend-owned activeAssignmentId.
+  // Inbox routes arrive with a resolved thread id. Other coach surfaces pass
+  // the active assignment id; trainees obtain the same id from their profile.
   // Pair-derived fallback is intentionally prohibited after the migration.
   const { profile } = useUserProfile();
   useEffect(() => {
     if (threadIdProp) {
       setResolvedThreadId(threadIdProp);
+      setIsResolvingThread(false);
       return;
     }
-    if (currentUid !== traineeId || !profile?.activeAssignmentId) {
+
+    const assignmentId = assignmentIdProp
+      || (currentUid === traineeId ? profile?.activeAssignmentId : null);
+    if (!assignmentId) {
       setResolvedThreadId(null);
+      setIsResolvingThread(false);
       return;
     }
+
+    setIsResolvingThread(true);
     return subscribeToAssignmentThreadId(
-      profile.activeAssignmentId,
-      setResolvedThreadId,
-      () => setErrorText("Could not resolve the active conversation.")
+      assignmentId,
+      (threadId) => {
+        setResolvedThreadId(threadId);
+        setIsResolvingThread(false);
+      },
+      () => {
+        setIsResolvingThread(false);
+        setErrorText("Could not resolve the active conversation.");
+      }
     );
-  }, [currentUid, profile?.activeAssignmentId, threadIdProp, traineeId]);
+  }, [assignmentIdProp, currentUid, profile?.activeAssignmentId, threadIdProp, traineeId]);
 
   useEffect(() => {
     setMessages([]);
@@ -168,13 +190,19 @@ export function CoachChatScreen({ traineeId, coachId, traineeName, threadId: thr
   useEffect(() => {
     const otherId = isCoach ? traineeId : coachId;
     if (!otherId) return;
-    return subscribeToUserProfile(otherId, (p) => {
-      setCounterpart({
-        name: p.name || "",
-        verified: p.verified === true,
-        photoUrl: p.profileImageUrl || null,
-      });
-    });
+    return subscribeToUserProfile(
+      otherId,
+      (p) => {
+        setCounterpart({
+          name: p.name || "",
+          verified: p.verified === true,
+          photoUrl: p.profileImageUrl || null,
+        });
+      },
+      // Leaves `counterpart` null, which already falls back to the route's
+      // name. Chat itself does not depend on this read.
+      () => setCounterpart(null)
+    );
   }, [isCoach, traineeId, coachId]);
 
   const counterpartName =
@@ -389,7 +417,9 @@ export function CoachChatScreen({ traineeId, coachId, traineeName, threadId: thr
               placeholder={
                 resolvedThreadId
                   ? `Message ${counterpart?.name?.split(" ")[0] || (isCoach ? "your client" : "your coach")}`
-                  : "Conversation unavailable"
+                  : isResolvingThread
+                    ? "Opening conversation..."
+                    : "Conversation unavailable"
               }
               placeholderTextColor={colors.textTertiary}
               value={draft}
@@ -586,4 +616,3 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceInset,
   },
 });
-

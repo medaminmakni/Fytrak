@@ -156,12 +156,12 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.bg,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#1c1c1e',
+    borderColor: colors.surfaceInset,
   },
   handleContainer: {
     alignItems: 'center',
@@ -241,9 +241,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   secondaryPill: {
-    backgroundColor: '#1c1c1e',
+    backgroundColor: colors.surfaceInset,
     borderWidth: 1,
-    borderColor: '#2c2c2e',
+    borderColor: colors.surfaceInset,
   },
   pillText: {
     color: '#000',
@@ -299,12 +299,12 @@ const styles = StyleSheet.create({
   muscleMapPlaceholder: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111',
+    backgroundColor: colors.surface,
     padding: 20,
     borderRadius: 16,
     gap: 20,
     borderWidth: 1,
-    borderColor: '#1c1c1e',
+    borderColor: colors.surfaceInset,
   },
   muscleInfo: {
     gap: 4,
@@ -332,7 +332,7 @@ const styles = StyleSheet.create({
     paddingBottom: 22,
     backgroundColor: 'rgba(10,10,10,0.96)',
     borderTopWidth: 1,
-    borderTopColor: '#1c1c1e',
+    borderTopColor: colors.surfaceInset,
   },
   primaryActionButton: {
     minHeight: 56,

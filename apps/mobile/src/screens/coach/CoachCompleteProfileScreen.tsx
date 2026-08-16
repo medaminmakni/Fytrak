@@ -150,7 +150,7 @@ export function CoachCompleteProfileScreen({ onComplete }: CoachCompleteProfileS
                     </View>
 
                     <View style={styles.infoBox}>
-                        <Ionicons name="shield-checkmark" size={18} color="#4ade80" />
+                        <Ionicons name="shield-checkmark" size={18} color={colors.success} />
                         <Text style={styles.infoText}>Your profile will be public in the 'Find a Coach' section for trainees.</Text>
                     </View>
                 </ScrollView>
@@ -169,11 +169,11 @@ const styles = StyleSheet.create({
         gap: 20,
     },
     card: {
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         borderRadius: 28,
         padding: 24,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         gap: 24,
     },
     inputGroup: {
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
         marginStart: 2,
     },
     input: {
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         borderRadius: 16,
         paddingHorizontal: 16,
         paddingVertical: 14,
@@ -194,23 +194,23 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: "600",
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     experienceStepper: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         borderRadius: 20,
         padding: 8,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     stepperBtn: {
         width: 50,
         height: 50,
         borderRadius: 15,
-        backgroundColor: "#2c2c2e",
+        backgroundColor: colors.surfaceInset,
         alignItems: "center",
         justifyContent: "center",
     },
@@ -238,12 +238,12 @@ const styles = StyleSheet.create({
         gap: 8,
     },
     specialtyPill: {
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         borderRadius: 12,
         paddingVertical: 10,
         paddingHorizontal: 16,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     specialtyPillActive: {
         borderColor: colors.primary,
@@ -282,7 +282,7 @@ const styles = StyleSheet.create({
         opacity: 0.5,
     },
     errorText: {
-        color: "#ff4444",
+        color: colors.danger,
         textAlign: "center",
         fontSize: 14,
         fontWeight: "600",
@@ -291,11 +291,11 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         gap: 12,
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         padding: 16,
         borderRadius: 20,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
     },
     infoText: {
         flex: 1,

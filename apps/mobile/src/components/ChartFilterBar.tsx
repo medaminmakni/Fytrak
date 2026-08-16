@@ -37,11 +37,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginTop: 20,
-    backgroundColor: "#0a0a0a",
+    backgroundColor: colors.bg,
     borderRadius: 24,
     padding: 4,
     borderWidth: 1,
-    borderColor: "#1c1c1e",
+    borderColor: colors.surfaceInset,
   },
   btn: {
     flex: 1,

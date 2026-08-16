@@ -1,6 +1,21 @@
-import { doc, getDoc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  documentId,
+  endAt,
+  getDoc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  startAt,
+  writeBatch,
+} from "firebase/firestore";
 import { auth, db } from "../config/firebase";
-import { getClientTodayDateKey, type ClientDateContext } from "../utils/dateKeys";
+import { type ClientDateContext } from "../utils/dateKeys";
+import { deriveReviewStatus, type DailyReportReviewStatus } from "../features/coaching/reviewStatus";
+import { shouldAcknowledgePainOnReview } from "../features/coaching/painQueue";
 
 const usersCollection = "users";
 
@@ -16,7 +31,13 @@ const usersCollection = "users";
  * `reviewStatus` records that the coach LOOKED at the day. It is not a verdict
  * on the client's performance, and nothing derives one from it.
  */
-export type DailyReportReviewStatus = "live" | "pending_review" | "reviewed";
+/*
+ * `DailyReportReviewStatus` and `deriveReviewStatus` now live in
+ * `features/coaching/reviewStatus.ts` — pure, and therefore testable, which
+ * this file is not: it imports `config/firebase` and initialises an app on
+ * require. Re-exported here so every existing importer keeps working.
+ */
+export type { DailyReportReviewStatus };
 
 export type DailyReport = {
   clientDateKey: string;
@@ -123,26 +144,7 @@ export const readDailyReportFlags = async (
   };
 };
 
-const toMillis = (value: unknown): number => {
-  if (value && typeof value === "object" && "toMillis" in value) {
-    const candidate = value as { toMillis?: () => number };
-    return typeof candidate.toMillis === "function" ? candidate.toMillis() : 0;
-  }
-  if (value instanceof Date) return value.getTime();
-  return 0;
-};
 
-const deriveReviewStatus = (
-  clientDateKey: string,
-  timezone: string | null,
-  reviewedAt: unknown,
-  lastActivityAt: unknown
-): DailyReportReviewStatus => {
-  const reviewedMillis = toMillis(reviewedAt);
-  const activityMillis = toMillis(lastActivityAt);
-  if (reviewedMillis > 0 && reviewedMillis >= activityMillis) return "reviewed";
-  return clientDateKey < getClientTodayDateKey(timezone) ? "pending_review" : "live";
-};
 
 /**
  * Subscribes to one client-day's report.
@@ -204,6 +206,58 @@ export const subscribeToDailyReport = (
 };
 
 /**
+ * Which days in a range carry a logged workout.
+ *
+ * Reads the report documents by id. `clientDateKey` IS the document id and is
+ * zero-padded `YYYY-MM-DD`, so lexical order is chronological and a range over
+ * `documentId()` needs no composite index and no extra stored field.
+ *
+ * Bounded by construction: the caller passes a start and end that span at most
+ * a fortnight, and the `limit` is a hard ceiling on top of that. This is one
+ * bounded read per client-detail open, not a listener per day.
+ *
+ * Days with no document simply do not appear. The caller treats an absent day
+ * as "nothing logged", which is correct — a report is only created once the
+ * client logs something.
+ */
+export const subscribeToDailyReportRange = (
+  traineeId: string,
+  startDateKey: string,
+  endDateKey: string,
+  callback: (loggedWorkoutDateKeys: string[]) => void,
+  onError?: (error: Error) => void,
+  maxDays = 31,
+) => {
+  if (!traineeId || !startDateKey || !endDateKey) {
+    callback([]);
+    return () => {};
+  }
+
+  const rangeQuery = query(
+    collection(db, usersCollection, traineeId, "dailyReports"),
+    orderBy(documentId()),
+    startAt(startDateKey),
+    endAt(endDateKey),
+    limit(maxDays),
+  );
+
+  return onSnapshot(
+    rangeQuery,
+    (snapshot) => {
+      callback(
+        snapshot.docs
+          .filter((docSnapshot) => docSnapshot.data()?.hasWorkout === true)
+          .map((docSnapshot) => docSnapshot.id),
+      );
+    },
+    (error) => {
+      console.error("[DailyReportService] Range subscription failed:", error);
+      onError?.(error);
+    },
+  );
+};
+
+/**
  * Marks a client-day reviewed.
  *
  * V0 uses a narrow direct update. Firestore rules allow only the client's
@@ -212,7 +266,7 @@ export const subscribeToDailyReport = (
 export const markDailyReportReviewed = async (
   traineeId: string,
   clientDateKey: string
-): Promise<{ alreadyReviewed: boolean }> => {
+): Promise<{ alreadyReviewed: boolean; acknowledgedPain: boolean }> => {
   if (!traineeId) throw new Error("A client id is required.");
   if (!clientDateKey) throw new Error("A date is required.");
   const coachId = auth.currentUser?.uid;
@@ -227,12 +281,48 @@ export const markDailyReportReviewed = async (
     data.reviewedAt,
     data.lastActivityAt
   ) === "reviewed";
-  if (!alreadyReviewed) {
-    await updateDoc(ref, {
-      reviewStatus: "reviewed",
-      reviewedAt: serverTimestamp(),
-      reviewedByCoachId: coachId,
-    });
+  /*
+   * Acknowledging pain is a WRITE the coach makes, not a side effect of having
+   * opened a screen. Reading about an injury is not the same as deciding what
+   * to do about it, so the queue only clears when the coach closes the day the
+   * pain was reported on.
+   *
+   * The match on `lastPainDateKey` is deliberately narrow: reviewing an
+   * unrelated Tuesday must never dismiss a Thursday injury nobody has read.
+   */
+  const traineeRef = doc(db, usersCollection, traineeId);
+  const traineeSnapshot = await getDoc(traineeRef);
+  const summary = traineeSnapshot.exists()
+    ? (traineeSnapshot.data().clientSummary as Record<string, unknown> | undefined)
+    : undefined;
+  const acknowledgesPain = shouldAcknowledgePainOnReview(summary, clientDateKey);
+
+  if (!alreadyReviewed || acknowledgesPain) {
+    /*
+     * One batch, so the review and the acknowledgement cannot diverge. A
+     * partial write would either leave a reviewed day with pain still at the
+     * top of the queue, or clear a warning for a day the coach never closed.
+     */
+    const batch = writeBatch(db);
+
+    if (!alreadyReviewed) {
+      batch.update(ref, {
+        reviewStatus: "reviewed",
+        reviewedAt: serverTimestamp(),
+        reviewedByCoachId: coachId,
+      });
+    }
+
+    if (acknowledgesPain) {
+      batch.update(traineeRef, {
+        "clientSummary.lastPainAcknowledgedAt": serverTimestamp(),
+        "clientSummary.lastPainAcknowledgedByCoachId": coachId,
+        "clientSummary.lastPainAcknowledgedDateKey": clientDateKey,
+      });
+    }
+
+    await batch.commit();
   }
-  return { alreadyReviewed };
+
+  return { alreadyReviewed, acknowledgedPain: acknowledgesPain };
 };

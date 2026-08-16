@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     paddingEnd: 20, // Match spacing.xl
   },
   menu: {
-    backgroundColor: "#111111", // Slightly warmer deep charcoal
+    backgroundColor: colors.surface, // Slightly warmer deep charcoal
     borderRadius: 24,
     width: 180,
     borderWidth: 1,

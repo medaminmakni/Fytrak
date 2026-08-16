@@ -63,6 +63,31 @@ export const addDaysToDateKey = (dateKey: string, days: number): string => {
 };
 
 /**
+ * The next Monday strictly after `dateKey`, in the same calendar.
+ *
+ * "Next week" was `addDaysToDateKey(clientToday, 7)` behind a label reading
+ * "In a week". That is not a week boundary, it is an offset: asked on a Friday
+ * it lands on a Friday, mid-week, which is not when a training week starts.
+ *
+ * From a Monday it returns the Monday SEVEN days later, never the same day —
+ * "next week" said on a Monday cannot mean today, and today is in any case not
+ * a legal revision date.
+ *
+ * Pure string arithmetic in UTC, so a coach's device zone cannot shift which
+ * Monday the client gets.
+ */
+export const nextMondayDateKey = (dateKey: string): string => {
+  if (!isValidDateKey(dateKey)) {
+    throw new Error(`Invalid date key "${dateKey}".`);
+  }
+  // 0 = Sunday … 6 = Saturday. Read in UTC to match addDaysToDateKey.
+  const dayOfWeek = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay();
+  // Sunday -> 1, Monday -> 7, Tuesday -> 6 … Saturday -> 2.
+  const daysUntilMonday = ((8 - dayOfWeek) % 7) || 7;
+  return addDaysToDateKey(dateKey, daysUntilMonday);
+};
+
+/**
  * Whole calendar days from `fromDateKey` to `toDateKey`, ignoring zones.
  *
  * The inverse of addDaysToDateKey. Both operate on the date STRING and never
@@ -180,6 +205,14 @@ export const resolveClientDateContext = (
  * A captured profile timezone must win over the current device timezone so
  * reads use the same calendar boundary as writes while the client is travelling.
  */
+/**
+ * The client's current calendar day, falling back to this device's zone.
+ *
+ * Only correct when the device IS the client's — i.e. on the trainee's own
+ * screens, where "my today" and "this phone's today" are the same question.
+ *
+ * A coach must not call this. See `getForeignClientTodayDateKey`.
+ */
 export const getClientTodayDateKey = (
   profileTimezone: string | null | undefined,
   date = new Date()
@@ -188,6 +221,30 @@ export const getClientTodayDateKey = (
     return toZonedDateKey(profileTimezone as string, date);
   }
   return resolveClientDateContext(null, date).dateKey;
+};
+
+/**
+ * Another person's current calendar day, or `""` when it cannot be known.
+ *
+ * The coach-side counterpart. `getClientTodayDateKey` falls back to the device
+ * zone, which on a coach's phone silently answers "what day is it HERE" — so a
+ * coach in London reviewing a client in Auckland could be a full day out, and
+ * every "logged today" and "silent N days" derived from it would be wrong.
+ *
+ * Returning an empty string forces the caller to render "unknown" rather than
+ * quietly substituting the wrong calendar. A missing timezone is a real state:
+ * the client has not opened the app since timezone capture shipped.
+ */
+export const getForeignClientTodayDateKey = (
+  clientTimezone: string | null | undefined,
+  date = new Date()
+): string => {
+  if (!isValidTimeZone(clientTimezone)) return "";
+  try {
+    return toZonedDateKey(clientTimezone as string, date);
+  } catch {
+    return "";
+  }
 };
 
 /**

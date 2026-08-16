@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   gridPhotoBox: { 
     borderRadius: 12, 
     overflow: "hidden", 
-    backgroundColor: "#1c1c1e" 
+    backgroundColor: colors.surfaceInset
   },
   gridPhotoMissing: {
     alignItems: "center",
@@ -118,7 +118,7 @@ const styles = StyleSheet.create({
   },
   selectionBorderOverlay: { 
     ...StyleSheet.absoluteFillObject, 
-    borderColor: "#ff4444", 
+    borderColor: colors.danger,
     borderWidth: 3, 
     borderRadius: 12, 
     backgroundColor: "rgba(255, 68, 68, 0.2)" 
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     top: 10, 
     end: 10, 
-    backgroundColor: colors.primary, 
+    backgroundColor: colors.primary,
     paddingHorizontal: 8, 
     paddingVertical: 4, 
     borderRadius: 6 

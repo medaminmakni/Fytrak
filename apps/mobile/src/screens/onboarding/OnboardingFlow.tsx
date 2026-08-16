@@ -110,7 +110,8 @@ export function OnboardingFlow({ onComplete, onExit }: OnboardingFlowProps) {
     switch (currentStep) {
       case 'GENDER':   return <GenderStep {...props} />;
       case 'BIRTHDAY': return <BirthdayStep {...props} />;
-      case 'METRICS':  return <BodyMetricsStep {...props} />;
+      // Gender is chosen two steps earlier; the figure needs it.
+      case 'METRICS':  return <BodyMetricsStep {...props} gender={formData.gender} />;
       case 'GOAL':     return <GoalStep {...props} />;
       case 'LEVEL':    return <LevelStep {...props} />;
       case 'SUCCESS':  return <SuccessStep plan={calculateNutritionPlan(formData)} onFinish={() => handleNext()} isSaving={isCompleting} />;

@@ -116,15 +116,26 @@ export function WorkoutExerciseCard({
             <Text style={styles.columnLabel}>REPS</Text>
           </>
         )}
+        {/*
+          RPE. The field has existed on `WorkoutSet` since the type was written
+          and nothing ever wrote it — it is what later tells a coach the load
+          was wrong, and without it a session review can only compare weights.
+        */}
+        <Text style={styles.columnLabel}>RPE</Text>
         <Text style={{ flex: 0.5 }} />
       </View>
 
+      {/*
+        The active set is the first incomplete one. Every row looked identical
+        before, so after a rest the trainee had to re-find their place.
+      */}
       {ex.sets.map((set, sIdx) => (
         <WorkoutSetRow
           key={sIdx}
           set={set}
           sIdx={sIdx}
           type={ex.type!}
+          isActive={sIdx === ex.sets.findIndex((candidate) => !candidate.isCompleted)}
           onUpdateSet={(field, value) => onUpdateSet(sIdx, field, value)}
           onToggleSet={() => onToggleSet(sIdx)}
         />
@@ -140,32 +151,32 @@ export function WorkoutExerciseCard({
 
 const styles = StyleSheet.create({
   exerciseCard: {
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   exerciseHeader: { gap: 16, marginBottom: 20 },
   exerciseNameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   exerciseNameInput: { flex: 1, paddingVertical: 8 },
   exerciseActions: { flexDirection: "row", gap: 8 },
-  infoIconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: "#2c2c2e", alignItems: "center", justifyContent: "center" },
+  infoIconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.surfaceInset, alignItems: "center", justifyContent: "center" },
   removeExerciseBtn: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
   typeSelectorRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  typePill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: "#1c1c1e", borderWidth: 1, borderColor: "#2c2c2e" },
+  typePill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, backgroundColor: colors.surfaceInset, borderWidth: 1, borderColor: colors.surfaceInset },
   typePillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
   typePillText: { color: colors.textMuted, fontSize: 11, fontWeight: "800" },
   typePillTextActive: { color: "#000" },
   tableHeader: { flexDirection: "row", marginBottom: 12, paddingHorizontal: 12, alignItems: "center" },
   columnLabel: { flex: 1, color: colors.textMuted, fontSize: 11, fontWeight: "900", textAlign: "center", letterSpacing: 0.5 },
   columnLabelStart: { textAlign: I18nManager.isRTL ? "right" : "left" },
-  addSetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8, paddingVertical: 12, backgroundColor: "#1c1c1e", borderRadius: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#333" },
+  addSetBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 8, paddingVertical: 12, backgroundColor: colors.surfaceInset, borderRadius: 16, borderStyle: "dashed", borderWidth: 1, borderColor: "#333" },
   addSetText: { color: colors.primary, fontSize: 12, fontWeight: "800" },
-  previousValuesCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#1c1c1e", borderRadius: 16, padding: 12, marginBottom: 16, gap: 12, borderWidth: 1, borderColor: "#2c2c2e", borderLeftWidth: 3, borderLeftColor: colors.primary },
+  previousValuesCard: { flexDirection: "row", alignItems: "center", backgroundColor: colors.surfaceInset, borderRadius: 16, padding: 12, marginBottom: 16, gap: 12, borderWidth: 1, borderColor: colors.surfaceInset, borderLeftWidth: 3, borderLeftColor: colors.primary },
   previousValuesIcon: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary + "20", alignItems: "center", justifyContent: "center" },
   previousValuesLabel: { color: colors.primary, fontSize: 11, fontWeight: "900", letterSpacing: 0.5, marginBottom: 2 },
   previousValuesText: { color: "#aaa", fontSize: 13, fontWeight: "600" },
-  previousValuesAction: { backgroundColor: "#2c2c2e", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
+  previousValuesAction: { backgroundColor: colors.surfaceInset, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   previousValuesActionText: { color: "#fff", fontSize: 11, fontWeight: "800" },
 });

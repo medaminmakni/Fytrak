@@ -5,6 +5,7 @@ import { auth } from "../config/firebase";
 import {
   clearActiveWorkoutDraft,
   createEmptyWorkoutExercise,
+  ACTIVE_WORKOUT_DRAFT_VERSION,
   hasMeaningfulWorkoutDraft,
   loadActiveWorkoutDraft,
   saveActiveWorkoutDraft,
@@ -20,6 +21,11 @@ import type { PrescribedWorkout, WorkoutLog, WorkoutSet, WorkoutSetType } from "
 import type { ExerciseLibraryItem } from "../constants/exercises";
 import { t as tEx } from "../constants/exercises";
 import type { ProgramSession } from "../services/programService";
+import {
+  prefillWorkoutFromSession,
+  type PrescribedSession,
+  type ProgramSourceMetadata,
+} from "../features/programs/programWorkout";
 
 type ExerciseLog = ActiveWorkoutExerciseDraft;
 
@@ -27,6 +33,14 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
   const [workoutName, setWorkoutName] = useState("Today's Session");
   const [exercises, setExercises] = useState<ExerciseLog[]>([]);
   const [activePrescriptionId, setActivePrescriptionId] = useState<string | null>(null);
+  /*
+   * Which program session this log is being performed against, if any.
+   *
+   * Carried to the save so completion can be PROVEN from the log rather than
+   * written onto the coach's program document — which the trainee must not be
+   * able to modify.
+   */
+  const [programSource, setProgramSource] = useState<ProgramSourceMetadata | null>(null);
   const [workoutStartedAt, setWorkoutStartedAt] = useState(new Date().toISOString());
   
   const hasLoadedDraftRef = useRef(false);
@@ -67,6 +81,9 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
           });
           setWorkoutName(draft.workoutName);
           setActivePrescriptionId(draft.activePrescriptionId);
+          // Restores the link to the program session. v1 drafts carry null,
+          // which is the honest answer — they never recorded one.
+          setProgramSource(draft.programSource);
           setWorkoutStartedAt(draft.startedAt);
           setExercises(draft.exercises.length > 0 ? draft.exercises : []);
         },
@@ -83,10 +100,11 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
     if (!user || !hasLoadedDraftRef.current || isCompletingWorkoutRef.current) return;
 
     const draft = {
-      version: 1 as const,
+      version: ACTIVE_WORKOUT_DRAFT_VERSION,
       userId: user.uid,
       workoutName,
       activePrescriptionId,
+      programSource,
       exercises,
       startedAt: workoutStartedAt,
       updatedAt: new Date().toISOString(),
@@ -101,7 +119,7 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
     }, 400);
 
     return () => clearTimeout(autosave);
-  }, [activePrescriptionId, exercises, workoutName, workoutStartedAt]);
+  }, [activePrescriptionId, programSource, exercises, workoutName, workoutStartedAt]);
 
   // TIMER LOGIC
   // Deliberately depends on `timerActive` only. Including `restTimeLeft` here
@@ -135,6 +153,14 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
   const initFromPrescribed = useCallback((p: PrescribedWorkout) => {
     setWorkoutName(p.title);
     setActivePrescriptionId(p.id);
+    /*
+     * Clears any program session left over from a previous workout.
+     *
+     * Without this, opening a program session and then switching to a daily
+     * prescription produced a log carrying BOTH — and the stale source would
+     * have completed a program session the client never performed.
+     */
+    setProgramSource(null);
     setWorkoutStartedAt(new Date().toISOString());
     setExercises(p.exercises.map(ex => {
       const exType = ex.type || "WEIGHT_REPS";
@@ -151,21 +177,47 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
     }));
   }, []);
 
-  const initFromProgramSession = useCallback((session: ProgramSession) => {
-    setWorkoutName(session.title);
+  /**
+   * Opens a program session in the logger.
+   *
+   * Three things changed here, all of which were losing the coach's work:
+   *
+   * 1. `instructions` and `restTimeSec` were dropped entirely, so a coach
+   *    writing "neutral grip if the shoulder complains" watched it never reach
+   *    the person it was written for.
+   * 2. The coach's `targetReps`/`targetWeight` were written straight into the
+   *    client's `reps`/`weight`. The ask and the outcome were therefore the same
+   *    number the moment the log saved, and no later screen could tell whether
+   *    the client had hit the target or entered anything at all. Targets now
+   *    ride alongside, and the client's own fields start empty.
+   * 3. Nothing recorded WHICH session was being performed, so a finished
+   *    workout could never be matched back to the prescription that asked for
+   *    it. The source metadata is carried to the save.
+   */
+  const initFromProgramSession = useCallback((
+    session: ProgramSession,
+    programId: string,
+    scheduledDateKey: string,
+  ) => {
+    const prefilled = prefillWorkoutFromSession(
+      session as unknown as PrescribedSession,
+      programId,
+      scheduledDateKey,
+    );
+    setWorkoutName(prefilled.name);
     setActivePrescriptionId(null);
+    setProgramSource(prefilled.source);
     setWorkoutStartedAt(new Date().toISOString());
-    setExercises(session.exercises.map((exercise) => ({
+    setExercises(prefilled.exercises.map((exercise) => ({
       name: exercise.name,
-      type: exercise.suggestedSets[0]?.type ?? "WEIGHT_REPS",
-      sets: (exercise.suggestedSets.length > 0
-        ? exercise.suggestedSets
-        : [{ type: "WEIGHT_REPS" as WorkoutSetType }]
-      ).map((set) => ({
-        type: set.type,
-        reps: set.targetReps,
-        weight: set.targetWeight,
-        durationSec: set.targetDurationSec,
+      type: exercise.type as WorkoutSetType,
+      instructions: exercise.instructions,
+      restTimeSec: exercise.restTimeSec,
+      sets: exercise.sets.map((set) => ({
+        type: set.type as WorkoutSetType,
+        targetReps: set.targetReps,
+        targetWeight: set.targetWeight,
+        targetDurationSec: set.targetDurationSec,
         isCompleted: false,
       })),
     })));
@@ -249,7 +301,7 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
           weight: previous.weight,
           reps: previous.reps,
           durationSec: previous.durationSec,
-          rpe: previous.rpe,
+          rpe: undefined,
         };
       });
 
@@ -305,7 +357,9 @@ export function useActiveWorkout(workouts: WorkoutLog[]) {
   return {
     workoutName, setWorkoutName,
     exercises, setExercises,
-    activePrescriptionId, setActivePrescriptionId,
+    activePrescriptionId,
+    programSource, setProgramSource,
+setActivePrescriptionId,
     workoutStartedAt, setWorkoutStartedAt,
     isCompletingWorkoutRef,
     restTimeLeft, setRestTimeLeft,

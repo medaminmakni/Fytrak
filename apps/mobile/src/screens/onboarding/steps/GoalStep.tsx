@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
   sub: { marginTop: 8 },
   scroll: { flex: 1, marginTop: 20 },
   scrollContent: { gap: 12, paddingBottom: 20 },
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#161616', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: '#333', gap: 12 },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface, borderRadius: 24, padding: 16, borderWidth: 1, borderColor: '#333', gap: 12 },
   iBox: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   infoCol: { flex: 1 },
   cardSub: { fontSize: 12, color: colors.textDim, marginTop: 2, fontWeight: '600', lineHeight: 16 },

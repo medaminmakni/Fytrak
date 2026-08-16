@@ -100,7 +100,7 @@ export function WaterTracker({ onLog }: Props) {
             </View>
 
             <Pressable style={styles.resetBtn} onPress={() => uid && setWaterIntake(uid, 0, profile?.timezone)}>
-               <Typography variant="label" color="#ff4444" style={{ fontSize: 11, fontWeight: "900" }}>RESET PROGRESS</Typography>
+               <Typography variant="label" color={colors.danger} style={{ fontSize: 11, fontWeight: "900" }}>RESET PROGRESS</Typography>
             </Pressable>
          </View>
       </View>
@@ -134,10 +134,10 @@ const styles = StyleSheet.create({
   glass: {
     width: 70,
     height: 110,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.bg,
     borderRadius: 18,
     borderWidth: 2,
-    borderColor: '#1c1c1e',
+    borderColor: colors.surfaceInset,
     overflow: 'hidden',
     justifyContent: 'flex-end',
   },
@@ -168,12 +168,12 @@ const styles = StyleSheet.create({
   },
   quickBtn: {
     flex: 1,
-    backgroundColor: '#1c1c1e',
+    backgroundColor: colors.surfaceInset,
     paddingVertical: 10,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#2c2c2e',
+    borderColor: colors.surfaceInset,
   },
   quickBtnText: {
     color: '#fff',
@@ -186,14 +186,14 @@ const styles = StyleSheet.create({
   },
   customInput: {
     flex: 1,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.bg,
     borderRadius: 12,
     paddingHorizontal: 12,
     color: '#fff',
     fontSize: 13,
     fontWeight: '600',
     borderWidth: 1,
-    borderColor: '#1c1c1e',
+    borderColor: colors.surfaceInset,
     height: 44,
   },
   addBtn: {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { subscribeWithCache } from "../data/subscriptions/subscriptionCache";
 import {
   subscribeToDailyMeals,
@@ -24,14 +24,20 @@ import {
   type ChatThreadSummary,
 } from "../services/chatService";
 import { buildTodayMission } from "../features/retention/todayMission";
+import {
+  isSessionCompleted,
+  type CompletionCandidate,
+} from "../features/programs/programWorkout";
+import { subscribeToPlanRevisions, type PlanRevision } from "../services/planRevisionService";
 import { getClientTodayDateKey } from "../utils/dateKeys";
 import { useCurrentUser } from "./useCurrentUser";
 import { useClientDateKey } from "./useClientDateKey";
 import { Ionicons } from "@expo/vector-icons";
-import { resolvePlanDimension } from "../features/plans/planResolution";
+import { isProgramCoveringDate, resolvePlanDimension } from "../features/plans/planResolution";
 import {
   selectUnscheduled,
   toMealCandidates,
+  toActiveScheduledPrograms,
   toScheduledPrograms,
   toWorkoutCandidates,
   type ScheduledPrescribedMeal,
@@ -39,6 +45,9 @@ import {
   type ScheduledProgramDoc,
 } from "../features/plans/planAdapters";
 import type { ProgramSession } from "../services/programService";
+import type { NutritionTargetStatus } from "../features/nutrition/nutritionTargets";
+import { combineDimensionStatus } from "../features/coaching/dimensionStatus";
+import type { DataStatus } from "./useTraineeDetailData";
 
 export type DashboardAction = {
   eyebrow: string;
@@ -60,12 +69,34 @@ export function useTraineeDashboard() {
   const [metrics, setMetrics] = useState<BodyMetric[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [checkInTasks, setCheckInTasks] = useState<CheckInTask[]>([]);
+  const [planRevisions, setPlanRevisions] = useState<PlanRevision[]>([]);
+  /*
+   * Whether the PLAN reads succeeded.
+   *
+   * The coach's client-day report has carried per-dimension status since Phase
+   * 3; the trainee's own Today had none, so a failed prescription read arrived
+   * as an empty array and rendered as "no plan" — the same collapse, on the
+   * other side of the relationship. Only the two plan sources feed it, because
+   * they are the only ones the session card speaks for.
+   */
+  const [workoutPlanStatus, setWorkoutPlanStatus] = useState<DataStatus>("loading");
+  const [programPlanStatus, setProgramPlanStatus] = useState<DataStatus>("loading");
   const [lastMessage, setLastMessage] = useState<ChatThreadSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [profileRetryToken, setProfileRetryToken] = useState(0);
   const dateKey = useClientDateKey(profile?.timezone);
 
   useEffect(() => {
-    if (!uid) return;
+    if (!uid) {
+      setIsLoading(false);
+      setWorkoutPlanStatus("loaded");
+      setProgramPlanStatus("loaded");
+      return;
+    }
+
+    setWorkoutPlanStatus("loading");
+    setProgramPlanStatus("loading");
 
     const unsubMeals = subscribeWithCache<Meal[]>(
       `dailyMeals:${uid}:${dateKey}`,
@@ -81,8 +112,12 @@ export function useTraineeDashboard() {
 
     const unsubPrescribed = subscribeWithCache<PrescribedWorkout[]>(
       `prescriptionHistory:${uid}`,
-      (emit) => subscribeToPrescriptionHistory(uid, emit),
-      setPrescribed
+      (emit, onError) => subscribeToPrescriptionHistory(uid, emit, onError),
+      (data) => {
+        setPrescribed(data);
+        setWorkoutPlanStatus("loaded");
+      },
+      () => setWorkoutPlanStatus("error")
     );
 
     const unsubPrescribedMeals = subscribeWithCache<PrescribedMeal[]>(
@@ -91,17 +126,38 @@ export function useTraineeDashboard() {
       setPrescribedMeals
     );
 
+    /*
+     * Why the plan changed, from the client's side.
+     *
+     * A coach can now genuinely replace a day's plan (Phase 4), and until this
+     * the client had no way to see that it had happened or why — the reason was
+     * written into `planRevisions` and read only on the COACH's screen. A plan
+     * that changes underneath someone without explanation is the exact
+     * complaint the collection was created to answer.
+     */
+    const unsubRevisions = subscribeWithCache<PlanRevision[]>(
+      `planRevisions:${uid}`,
+      (emit, onError) => subscribeToPlanRevisions(uid, emit, onError),
+      setPlanRevisions
+    );
+
     const unsubCheckInTasks = subscribeWithCache<CheckInTask[]>(
       `openCheckInTasks:${uid}`,
       (emit) => subscribeToOpenCheckInTasks(uid, emit),
       setCheckInTasks
     );
 
-    const unsubProfile = subscribeWithCache<UserProfile>(
+    const unsubProfile = subscribeWithCache<UserProfile | null>(
       `profile:${uid}`,
-      (emit) => subscribeToUserProfile(uid, emit),
+      (emit, onError) => subscribeToUserProfile(uid, emit, onError),
       (data) => {
         setProfile(data);
+        setProfileError(null);
+        setIsLoading(false);
+      },
+      () => {
+        setProfile(null);
+        setProfileError("We couldn't load your dashboard profile.");
         setIsLoading(false);
       }
     );
@@ -114,8 +170,12 @@ export function useTraineeDashboard() {
 
     const unsubPrograms = subscribeWithCache<Program[]>(
       `programs:${uid}`,
-      (emit) => subscribeToTraineePrograms(uid, emit),
-      setPrograms
+      (emit, onError) => subscribeToTraineePrograms(uid, emit, onError),
+      (data) => {
+        setPrograms(data);
+        setProgramPlanStatus("loaded");
+      },
+      () => setProgramPlanStatus("error")
     );
 
     let unsubChat: (() => void) | undefined;
@@ -135,13 +195,14 @@ export function useTraineeDashboard() {
       unsubPrescribed();
       unsubPrescribedMeals();
       unsubCheckInTasks();
+      unsubRevisions();
       unsubProfile();
       unsubMetrics();
       unsubPrograms();
       unsubChat?.();
       unsubThread?.();
     };
-  }, [uid, dateKey, profile?.activeAssignmentId]);
+  }, [uid, dateKey, profile?.activeAssignmentId, profileRetryToken]);
 
   useEffect(() => {
     if (!uid) return;
@@ -150,11 +211,35 @@ export function useTraineeDashboard() {
 
   const isPremium = profile?.isPremium === true;
 
+  const retryProfile = useCallback(() => {
+    setProfileError(null);
+    setIsLoading(true);
+    setWorkoutPlanStatus("loading");
+    setProgramPlanStatus("loading");
+    setProfileRetryToken((value) => value + 1);
+  }, []);
+
   const nutritionStats = useMemo(() => {
     const totalCals = meals.reduce((sum, m) => sum + (m.calories || 0), 0);
-    const targetCals = profile?.macroTargets?.calories || 2100;
-    return { current: totalCals, target: targetCals };
-  }, [meals, profile]);
+    /*
+     * Null, never 2,100.
+     *
+     * `profile?.macroTargets?.calories || 2100` gave every trainee without a
+     * target the same invented one — and `|| ` also swallowed a legitimate 0.
+     * `target` is now the honest shape and every consumer handles null.
+     */
+    const rawTarget = profile?.macroTargets?.calories;
+    const targetCals =
+      typeof rawTarget === "number" && Number.isFinite(rawTarget) && rawTarget > 0
+        ? rawTarget
+        : null;
+    const targetStatus: NutritionTargetStatus = profileError
+      ? "unknown"
+      : targetCals === null
+        ? "absent"
+        : "available";
+    return { current: totalCals, target: targetCals, targetStatus };
+  }, [meals, profile, profileError]);
 
   const workoutStatus = useMemo(() => {
     return workouts.length > 0 ? "Completed" : "Pending";
@@ -177,7 +262,8 @@ export function useTraineeDashboard() {
   >({
     dateKey,
     dailyCandidates: toWorkoutCandidates(scheduledWorkouts),
-    programs: toScheduledPrograms(scheduledPrograms),
+    // Exactly one eligible program participates in resolution.
+    programs: toActiveScheduledPrograms(scheduledPrograms as ScheduledProgramDoc[], dateKey),
     toProgramPayload: (session) => session.payload,
   }), [dateKey, prescribed, programs]);
 
@@ -212,6 +298,7 @@ export function useTraineeDashboard() {
       hasWorkoutToday: workouts.length > 0,
       caloriesLogged: nutritionStats.current,
       calorieTarget: nutritionStats.target,
+      nutritionTargetStatus: nutritionStats.targetStatus,
       hasCoachAssigned: !!profile?.selectedCoachId,
       hasMessagedToday: !!hasMessagedToday,
       hasPendingWorkoutPlan:
@@ -222,7 +309,7 @@ export function useTraineeDashboard() {
         || unscheduledMeals.length > 0,
       hasBodyMetricToday: latestMetricDate === today,
     });
-  }, [metrics, nutritionStats.current, nutritionStats.target, todayWorkoutPlan.sourceType, todayNutritionPlan.sourceType, unscheduledWorkouts.length, unscheduledMeals.length, profile?.selectedCoachId, profile?.timezone, workouts.length, dateKey, lastMessage, uid]);
+  }, [metrics, nutritionStats.current, nutritionStats.target, nutritionStats.targetStatus, todayWorkoutPlan.sourceType, todayNutritionPlan.sourceType, unscheduledWorkouts.length, unscheduledMeals.length, profile?.selectedCoachId, profile?.timezone, workouts.length, dateKey, lastMessage, uid]);
 
   const primaryAction = useMemo((): DashboardAction => {
     const dailyWorkout = todayWorkoutPlan.sourceType === "daily"
@@ -271,7 +358,13 @@ export function useTraineeDashboard() {
       };
     }
 
-    if (nutritionStats.current < nutritionStats.target * 0.6) {
+    /*
+     * "Under 60% of target" is only a question that can be asked when a target
+     * exists. Without one this branch is skipped entirely rather than compared
+     * against null — `null * 0.6` is 0, which would have quietly made the
+     * condition permanently false anyway, but for the wrong reason.
+     */
+    if (nutritionStats.target !== null && nutritionStats.current < nutritionStats.target * 0.6) {
       return {
         eyebrow: "Recovery support",
         title: "Log nutrition",
@@ -303,7 +396,63 @@ export function useTraineeDashboard() {
     };
   }, [todayWorkoutPlan, unscheduledWorkouts, workouts.length, nutritionStats.current, nutritionStats.target, profile?.assignmentStatus]);
 
+  /**
+   * The revision that explains TODAY's plan, if there is one.
+   *
+   * Matched on the exact client date key, because an adjustment replaces one
+   * day and no other — showing yesterday's reason against today's plan would
+   * restate the very thing the Phase 4 copy is careful not to claim.
+   */
+  const todayPlanRevisions = useMemo(
+    () => planRevisions.filter((revision) => revision.effectiveFromDateKey === dateKey),
+    [planRevisions, dateKey]
+  );
+
+  /**
+   * The load state of today's plan, in the three-way form the rest of the app
+   * uses. `loaded` never means "empty" — that distinction is the caller's.
+   */
+  const planStatus = combineDimensionStatus([workoutPlanStatus, programPlanStatus]);
+
+  /**
+   * True when a published program's range covers today.
+   *
+   * The one input that separates a rest day from having no plan: the resolver
+   * returns `sourceType: "none"` for both.
+   */
+  /**
+   * Whether TODAY's program session has actually been submitted.
+   *
+   * Derived from source-matched workout logs, never from
+   * `ProgramSession.isCompleted` — that field lives inside the coach-authored
+   * program document, which the trainee cannot write. Matching on all four
+   * parts is what stops an unrelated workout on the same day from closing the
+   * card.
+   */
+  const isTodayProgramSessionCompleted = useMemo(() => {
+    if (todayWorkoutPlan.sourceType !== "program") return false;
+    const sessionId = (todayWorkoutPlan.payload as { id?: string })?.id;
+    if (!sessionId) return false;
+    return isSessionCompleted(
+      workouts as unknown as CompletionCandidate[],
+      todayWorkoutPlan.sourceId,
+      sessionId,
+      dateKey,
+    );
+  }, [todayWorkoutPlan, workouts, dateKey]);
+
+  const hasProgramCoveringToday = useMemo(
+    () => toActiveScheduledPrograms(programs as ScheduledProgramDoc[], dateKey)
+      .some((program) => isProgramCoveringDate(program, dateKey)),
+    [programs, dateKey]
+  );
+
   return {
+    dateKey,
+    isTodayProgramSessionCompleted,
+    planStatus,
+    hasProgramCoveringToday,
+    todayPlanRevisions,
     meals,
     workouts,
     profile,
@@ -317,6 +466,8 @@ export function useTraineeDashboard() {
     unscheduledMeals,
     checkInTasks,
     isLoading,
+    profileError,
+    retryProfile,
     isPremium,
     nutritionStats,
     workoutStatus,

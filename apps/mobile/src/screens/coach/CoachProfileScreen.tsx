@@ -41,10 +41,14 @@ export function CoachProfileScreen({ session }: { session: SessionState }) {
     const user = auth.currentUser;
     if (!user) return;
 
-    const unsubProfile = subscribeToUserProfile(user.uid, (data) => {
-      setProfile(data);
-      setIsLoading(false);
-    });
+    const unsubProfile = subscribeToUserProfile(
+      user.uid,
+      (data) => {
+        setProfile(data);
+        setIsLoading(false);
+      },
+      () => setIsLoading(false)
+    );
 
     const unsubTrainees = subscribeToCoachTrainees(user.uid, (data) => {
       setTraineeCount(data.length);

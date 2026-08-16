@@ -1,6 +1,6 @@
 import { ToastService } from "../../components/Toast";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View, type ListRenderItem } from "react-native";
+import { ActivityIndicator, FlatList, Image, Pressable, StyleSheet, Text, View, type ListRenderItem } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
@@ -14,7 +14,7 @@ import {
 } from "../../services/userSession";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../../navigation/types";
+import type { CoachInboxStackParamList } from "../../navigation/types";
 import { subscribeWithCache } from "../../data/subscriptions/subscriptionCache";
 
 const toTime = (value: unknown): number => {
@@ -45,7 +45,7 @@ export function CoachInboxScreen() {
     const [summaries, setSummaries] = useState<Record<string, ChatThreadSummary | null>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [threadsReady, setThreadsReady] = useState(false);
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    const navigation = useNavigation<NativeStackNavigationProp<CoachInboxStackParamList>>();
     // Firebase Auth rehydrates from AsyncStorage asynchronously, so reading
     // auth.currentUser at first mount returns null on a cold start and the
     // subscriptions below would never be created (permanent spinner).
@@ -107,7 +107,7 @@ export function CoachInboxScreen() {
             ToastService.error("Conversation unavailable", "The active conversation is still loading. Please try again.");
             return;
         }
-        navigation.navigate("CoachChat", {
+        navigation.navigate("CoachConversation", {
             traineeId: trainee.id,
             traineeName: trainee.name || "Anonymous",
             coachId: uid || "unknown",
@@ -184,7 +184,11 @@ const ThreadRow = memo(function ThreadRow({ trainee, preview, timeLabel, unreadC
             onPress={() => onPress(trainee)}
         >
             <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{(trainee.name || "?")[0]}</Text>
+                {trainee.profileImageUrl ? (
+                    <Image source={{ uri: trainee.profileImageUrl }} style={styles.avatarImage} accessibilityLabel={`${name}'s profile photo`} />
+                ) : (
+                    <Text style={styles.avatarText}>{name[0] || "?"}</Text>
+                )}
             </View>
             <View style={styles.threadBody}>
                 <View style={styles.threadHeader}>
@@ -229,23 +233,25 @@ const styles = StyleSheet.create({
     threadCard: {
         flexDirection: "row",
         alignItems: "center",
-        backgroundColor: "#161616",
+        backgroundColor: colors.surface,
         borderRadius: 22,
         padding: 16,
         borderWidth: 1,
-        borderColor: "#2c2c2e",
+        borderColor: colors.surfaceInset,
         gap: 12,
     },
     avatar: {
         width: 46,
         height: 46,
         borderRadius: 23,
-        backgroundColor: "#1c1c1e",
+        backgroundColor: colors.surfaceInset,
         alignItems: "center",
         justifyContent: "center",
         borderWidth: 1,
         borderColor: "#333",
+        overflow: "hidden",
     },
+    avatarImage: { width: "100%", height: "100%" },
     avatarText: {
         color: "#fff",
         fontSize: 18,

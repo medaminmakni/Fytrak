@@ -6,13 +6,23 @@ import { colors } from "../theme/colors";
 interface MacroItemProps {
   label: string;
   current: number;
-  target: number;
+  /**
+   * Null when the trainee has no target for this macro.
+   *
+   * `current / target` with target 0 or undefined yields Infinity or NaN, and
+   * `width: "NaN%"` silently renders an empty bar — visually identical to a
+   * real 0% against a real target.
+   */
+  target: number | null;
   color: string;
   icon: keyof typeof Ionicons.glyphMap;
 }
 
 export function MacroItem({ label, current, target, color, icon }: MacroItemProps) {
-  const progress = Math.min(current / target, 1);
+  const hasTarget = typeof target === "number" && Number.isFinite(target) && target > 0;
+  // No target means no proportion to draw. The bar stays empty rather than
+  // filling against an invented denominator.
+  const progress = hasTarget ? Math.min(Math.max(current / (target as number), 0), 1) : 0;
   return (
     <View style={styles.macroItem}>
       <View style={styles.macroHeader}>
@@ -22,7 +32,9 @@ export function MacroItem({ label, current, target, color, icon }: MacroItemProp
       <View style={styles.barBg}>
         <View style={[styles.barFill, { width: `${progress * 100}%`, backgroundColor: color }]} />
       </View>
-      <Text style={styles.macroValue}>{current}g / {target}g</Text>
+      <Text style={styles.macroValue}>
+        {hasTarget ? `${current}g / ${target}g` : `${current}g logged`}
+      </Text>
     </View>
   );
 }
@@ -44,7 +56,7 @@ const styles = StyleSheet.create({
   },
   barBg: {
     height: 6,
-    backgroundColor: "#2c2c2e",
+    backgroundColor: colors.surfaceInset,
     borderRadius: 3,
     overflow: "hidden",
   },

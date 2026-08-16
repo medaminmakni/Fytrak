@@ -1,3 +1,13 @@
+/*
+ * DEPRECATED — no callers.
+ *
+ * Trainee Today was its only consumer and now renders
+ * `features/today/components/TodaySessionCard`, which states the six real
+ * states of a day rather than one computed "next action". Kept on disk rather
+ * than deleted in the same pass that replaced it: nothing else imports it
+ * today, but a deletion and a redesign landing together is how a rollback
+ * becomes two changes instead of one. Delete once Today is settled on device.
+ */
 import React from "react";
 import { View, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";

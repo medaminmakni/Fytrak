@@ -9,6 +9,7 @@ import { PrimaryButton } from "../../components/Button";
 import { TextField } from "../../components/TextField";
 import { appEnv } from "../../config/env";
 import { BrandLogo } from "../../components/BrandLogo";
+import { GoogleLogo } from "../../components/GoogleLogo";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../../navigation/types";
@@ -30,7 +31,6 @@ export function SignUpScreen({ role, onSignUp, onGoogleLogin, onFacebookLogin }:
   const isCoach = role === "coach";
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -103,42 +103,30 @@ export function SignUpScreen({ role, onSignUp, onGoogleLogin, onFacebookLogin }:
   };
 
   return (
-    <ScreenShell
-      centered
-      title={<BrandLogo width={160} height={75} />}
-      subtitle="Create your account"
-      titleStyle={styles.centeredHeader}
-      subtitleStyle={styles.centeredHeader}
-      contentStyle={styles.contentTight}
-    >
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={styles.form}>
+    // Same as LoginScreen: the wordmark travels with the form rather than
+    // being pinned to the top by the shell header.
+    <ScreenShell contentStyle={styles.contentTight}>
+      {/* Same shape as LoginScreen: centred when it fits, scrolls when it does not. */}
+      <ScrollView
+        contentContainerStyle={styles.formScroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <View style={styles.brand}>
+          <BrandLogo width={160} height={75} />
           {/*
-            * The trainee and coach forms are identical, so without this banner
-            * the only evidence of which account you are creating is the button
-            * you tapped a screen ago. It states the role and offers a way back
-            * — saying "you are creating a coach account" with no escape would
-            * just be a dead end.
-            */}
-          <View style={styles.roleBanner}>
-            <Ionicons
-              name={isCoach ? "trophy-outline" : "fitness-outline"}
-              size={16}
-              color={colors.primary}
-            />
-            <Text style={styles.roleBannerTitle} numberOfLines={1}>
-              {isCoach ? "Coach account" : "Trainee account"}
-            </Text>
-            <Pressable
-              onPress={() => navigation.navigate("Welcome")}
-              hitSlop={10}
-              accessibilityRole="button"
-              accessibilityLabel="Change account type"
-            >
-              <Text style={styles.roleBannerChange}>Change</Text>
-            </Pressable>
-          </View>
+            The role moved into this line from a separate pill below it.
+            Trainee and coach see an identical form, so it still has to be
+            named — but naming it here costs no height, where the banner cost
+            a 44px row plus a gap and pushed the form into a scroll.
+          */}
+          <Text style={styles.brandSubtitle}>
+            {isCoach ? "Create your coach account" : "Create your trainee account"}
+          </Text>
+        </View>
 
+        <View style={styles.form}>
           <TextField
             label="Name"
             required
@@ -163,17 +151,11 @@ export function SignUpScreen({ role, onSignUp, onGoogleLogin, onFacebookLogin }:
             editable={!isSubmitting}
           />
 
-          <TextField
-            label="Phone"
-            helperText="Optional"
-            value={phone}
-            onChangeText={setPhone}
-            placeholder="99 000 555"
-            keyboardType="phone-pad"
-            autoComplete="tel"
-            textContentType="telephoneNumber"
-            editable={!isSubmitting}
-          />
+          {/*
+            The optional phone field lived here. It is collected in profile
+            settings instead — asking for it during signup lengthened the one
+            form standing between a user and the app, for a value nothing read.
+          */}
 
           {/*
             Validation only speaks once the field has been touched. Showing
@@ -266,7 +248,7 @@ export function SignUpScreen({ role, onSignUp, onGoogleLogin, onFacebookLogin }:
               accessibilityLabel="Sign up with Google"
               onPress={() => void handleGoogleLogin()}
             >
-              <Ionicons name="logo-google" size={24} color="#4285F4" />
+              <GoogleLogo size={24} />
             </Pressable>
             <Pressable
               style={[styles.socialIconBtn, isSubmitting && styles.socialIconBtnDisabled]}
@@ -285,30 +267,34 @@ export function SignUpScreen({ role, onSignUp, onGoogleLogin, onFacebookLogin }:
 }
 
 const styles = StyleSheet.create({
-  contentTight: {
-    marginTop: 0,
-    // ScreenShell's `centered` mode gives the content area flex: 0, so a long
-    // form contributes its FULL height to the layout instead of scrolling
-    // inside a bounded box. Once that exceeds the screen, the container's
-    // justifyContent: "center" splits the overflow top and bottom and shoves
-    // the header off the top edge — which is what was clipping the logo.
-    //
-    // flex: 1 hands the leftover height to the scroll area, so the header stays
-    // put at full size and the form scrolls within what remains.
-    flex: 1,
-  },
-  centeredHeader: {
-    textAlign: "center",
-    width: "100%",
-  },
-
   /*
    * inputGroup / label / input are gone — TextField owns the well, the label,
-   * the placeholder colour and the validation line, so five copies of each
-   * collapsed into five component calls.
+   * the placeholder colour and the validation line, so four copies of each
+   * collapsed into four component calls. primaryButton / primaryButtonText /
+   * disabledButton went with them: they described a button this screen stopped
+   * rendering when it moved to PrimaryButton, and were still hand-maintained.
    */
+  contentTight: {
+    // The shell renders no header here, so the content area takes the full
+    // height and the ScrollView inside it handles both centring and overflow.
+    marginTop: 0,
+    flex: 1,
+  },
+  formScroll: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingVertical: spacing["2xl"],
+  },
+  brand: {
+    alignItems: "center",
+    marginBottom: spacing["2xl"],
+  },
+  brandSubtitle: {
+    ...typography.body,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+  },
   form: {
-    marginTop: spacing.xl,
     gap: spacing.lg,
   },
   termsRow: {
@@ -339,83 +325,42 @@ const styles = StyleSheet.create({
   },
   // roleGrid / roleCard / roleIcon* / roleLabel* / roleSub removed with the
   // trainee-coach picker — the role now arrives as a prop from Welcome.
-  roleBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.primaryMuted,
-    borderRadius: 999,
-    minHeight: 40,
-    paddingHorizontal: 14,
-    alignSelf: "flex-start",
-  },
-  roleBannerTitle: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: "800",
-    marginEnd: 4,
-  },
-  roleBannerChange: {
-    color: colors.primary,
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  primaryButton: {
-    marginTop: 4,
-    backgroundColor: colors.primary,
-    paddingVertical: 15,
-    borderRadius: 14,
-    alignItems: "center",
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
+  // roleBanner / roleBannerTitle / roleBannerChange removed — the role is
+  // stated in the brand subtitle now, and the button that commits the account
+  // still names it ("Create coach account").
   signupBtn: {
-    marginTop: 10,
-  },
-  primaryButtonText: {
-    color: colors.primaryText,
-    fontWeight: "800",
-    fontSize: 18,
-  },
-  disabledButton: {
-    opacity: 0.5,
+    marginTop: spacing.sm,
   },
   errorText: {
-    color: colors.danger,
     textAlign: "center",
-    fontSize: 13,
   },
   socialLabel: {
+    ...typography.label,
+    color: colors.textSecondary,
     textAlign: "center",
-    color: colors.textMuted,
-    marginTop: 10,
-    fontSize: 14,
+    marginTop: spacing.sm,
   },
   socialRow: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 20,
-    marginTop: 10,
-    marginBottom: 20,
+    gap: spacing.xl,
   },
+  /*
+   * White fill is Google's and Meta's brand requirement for their sign-in
+   * controls, so these are the one pair in the app that do not take their
+   * surface from the palette.
+   */
   socialIconBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: touchTarget.large,
+    height: touchTarget.large,
+    borderRadius: radius.pill,
     backgroundColor: "#ffffff",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
+  // Not `opacity`, which multiplies against the page behind it — the brand
+  // glyphs need to stay legible while a sign-up is in flight.
   socialIconBtnDisabled: {
-    opacity: 0.55,
+    backgroundColor: colors.textSecondary,
   },
 });
-

@@ -27,6 +27,18 @@ export function TraineeTabs({ session }: { session: SessionState }) {
       tabBarPosition="bottom"
       screenOptions={{
         lazy: true,
+        /*
+         * Root tabs support swipe navigation.
+         *
+         * The bar is bottom-positioned but this is a top-tab navigator, so it
+         * ships with horizontal swipe between root destinations. Fytrak is full
+         * of horizontal content — the client-day date stepper, chart filter
+         * bars, the photo compare slider, exercise rows — and a horizontal drag
+         * on those screens was ambiguous: scroll the strip, or change tab. The
+         * swipe navigation is intentional and remains available alongside those controls.
+         *
+         * Tabs change by swiping or by pressing the bottom bar.
+         */
         swipeEnabled: true,
       }}
       tabBar={(props) => <FytrakTabBar {...props} />}
@@ -106,7 +118,7 @@ function ChatLockedScreen({
 
 const lockedStyles = StyleSheet.create({
   container: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 30, paddingBottom: 120, gap: 16 },
-  iconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: "#161616", alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "#1c1c1e", marginBottom: 8 },
+  iconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.surfaceInset, marginBottom: 8 },
   title: { color: "#fff", fontSize: 24, fontWeight: "900", letterSpacing: 0.5 },
   desc: { color: colors.textMuted, fontSize: 14, fontWeight: "500", textAlign: "center", lineHeight: 20 },
   ctaBtn: { backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 18, paddingHorizontal: 36, borderRadius: 20, marginTop: 8, shadowColor: colors.primary, shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 10 },

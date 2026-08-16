@@ -31,7 +31,7 @@ export type Coach = {
   clients: number;
   verified: boolean;
   responseTime: string;
-  avatarUrl?: string;
+  profileImageUrl?: string | null;
 };
 
 export type CoachProfilePayload = {
@@ -71,18 +71,19 @@ export type CoachTrainee = {
   selectedCoachId?: string | null;
   selectedCoachName?: string | null;
   activeAssignmentId?: string | null;
+  profileImageUrl?: string | null;
   timezone?: string | null;
   clientSummary?: ClientSummary;
 };
 
-export type CoachClientSignal = {
-  traineeId: string;
-  lastWorkoutAt: Date | null;
-  workoutsLast7Days: number;
-  mealsLast7Days: number;
-  avgDailyProtein: number;
-  proteinTarget: number | null;
-};
+/*
+ * Re-exported, not re-declared. This was a second copy of the type that lives
+ * in features/coaching/coachIntelligence — two structurally identical
+ * definitions that had to be edited in lockstep, and adding `timezone` to one
+ * of them is what surfaced it.
+ */
+export type { CoachClientSignal } from "../features/coaching/coachIntelligence";
+import type { CoachClientSignal } from "../features/coaching/coachIntelligence";
 
 const usersCollection = "users";
 
@@ -140,7 +141,9 @@ export const fetchCoaches = async (): Promise<Coach[]> => {
       clients: data.clients || 0,
       verified: data.verified || false,
       responseTime: data.responseTime || "Fast",
-      avatarUrl: data.avatarUrl,
+      // Canonical field written by OAuth and profile uploads. The fallback is
+      // temporary compatibility for old test documents.
+      profileImageUrl: data.profileImageUrl || data.avatarUrl || null,
     };
   }).sort((a, b) => Number(b.verified) - Number(a.verified) || b.rating - a.rating);
 };
@@ -203,6 +206,11 @@ export const subscribeToCoachTrainees = (
 export const toCoachClientSignal = (trainee: CoachTrainee): CoachClientSignal => ({
   traineeId: trainee.id,
   lastWorkoutAt: toDateOrNull(trainee.clientSummary?.lastWorkoutAt),
+  // Carried so the coach's screens can resolve the CLIENT's calendar day
+  // rather than their own. Null until the client opens the app after timezone
+  // capture shipped, which the UI renders as "unknown" rather than guessing.
+  timezone: trainee.timezone ?? null,
+  lastWorkoutDateKey: trainee.clientSummary?.lastWorkoutDateKey ?? null,
   workoutsLast7Days: trainee.clientSummary?.workoutsLast7Days ?? 0,
   mealsLast7Days: trainee.clientSummary?.mealsLast7Days ?? 0,
   avgDailyProtein: trainee.clientSummary?.avgDailyProtein ?? 0,
@@ -216,9 +224,6 @@ export const toCoachClientSignals = (trainees: CoachTrainee[]): CoachClientSigna
 export const fetchCoachClientSignal = async (trainee: CoachTrainee): Promise<CoachClientSignal> =>
   toCoachClientSignal(trainee);
 
-/** @deprecated synchronous under the hood — use `toCoachClientSignals`. */
-export const fetchCoachClientSignals = async (trainees: CoachTrainee[]): Promise<CoachClientSignal[]> =>
-  toCoachClientSignals(trainees);
 
 export const respondToTraineeRequest = async (traineeId: string, accept: boolean): Promise<void> => {
   await resolveCoachRequest(traineeId, accept);

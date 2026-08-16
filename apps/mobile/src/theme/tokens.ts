@@ -47,6 +47,10 @@ export const radius = {
   nested: 12,
   /** Chips, pills, avatars, round buttons. */
   pill: 999,
+  /** The floating tab capsule. Larger than `card` so the ends read as round. */
+  tabBar: 22,
+  /** The active cell inside the capsule: `tabBar` minus the 5pt padding. */
+  tabCell: 17,
 
   /** @deprecated Use `nested`. */
   xs: 12,
@@ -118,6 +122,20 @@ export const typography = {
   button: {
     fontSize: 15,
     lineHeight: 22,
+    fontWeight: "600" as const,
+  },
+
+  /**
+   * Tab bar labels only.
+   *
+   * A step below `label` because five of them share one 390pt row and the
+   * longest ("Nutrition") has to fit a 70pt cell without truncating. It is the
+   * one place a smaller size is a layout requirement rather than a decoration,
+   * which is why it is a named token instead of an inline override.
+   */
+  tabLabel: {
+    fontSize: 12,
+    lineHeight: 15,
     fontWeight: "600" as const,
   },
 

@@ -19,10 +19,10 @@ import { PendingCoachScreen } from "../screens/trainee/PendingCoachScreen";
 import { TraineeTabs } from "./TraineeTabs";
 import { CoachTabs } from "./CoachTabs";
 import { ProfileScreen } from "../screens/trainee/ProfileScreen";
+import { AdjustPlanScreen } from "../screens/coach/AdjustPlanScreen";
 import { TraineeDetailScreen } from "../screens/coach/TraineeDetailScreen";
 import { PrescribeWorkoutScreen } from "../screens/coach/PrescribeWorkoutScreen";
 import { CreateProgramScreen } from "../screens/coach/CreateProgramScreen";
-import { CoachChatScreen } from "../screens/trainee/CoachChatScreen";
 import { auth } from "../config/firebase";
 import { SplashScreen } from "../screens/onboarding/SplashScreen";
 import { WelcomeScreen } from "../screens/onboarding/WelcomeScreen";
@@ -40,13 +40,14 @@ import type { RootStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+function TimezoneCapture() {
+  useTimezoneCapture();
+  return null;
+}
+
 export function RootNavigator() {
   const { session, isBootstrapping } = useSessionState();
-  const [isSplashFinished, setIsSplashFinished] = useState(false);
-
-  // Records each account's IANA timezone once. Trainee logs use it as their
-  // stable calendar boundary; coach timezone is retained for future scheduling.
-  useTimezoneCapture();
+  const [isSplashAnimationFinished, setIsSplashAnimationFinished] = useState(false);
 
   const handleAuthSuccess = async (initialRole?: "trainee" | "coach") => {
     const user = auth.currentUser;
@@ -59,12 +60,18 @@ export function RootNavigator() {
   };
 
 
-  if (isBootstrapping || !isSplashFinished) {
-    return <SplashScreen onFinish={() => setIsSplashFinished(true)} />;
+  if (isBootstrapping || !isSplashAnimationFinished) {
+    return (
+      <SplashScreen
+        canFinish={!isBootstrapping}
+        onFinish={() => setIsSplashAnimationFinished(true)}
+      />
+    );
   }
 
   return (
     <NavigationContainer>
+      {session.profileCompleted ? <TimezoneCapture /> : null}
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!session.isAuthenticated ? (
           /* AUTHENTICATION FLOW */
@@ -182,8 +189,16 @@ export function RootNavigator() {
                   {() => <TraineeTabs session={session} />}
                 </Stack.Screen>
                 <Stack.Screen name="CoachAssignment">
-                  {() => (
+                  {({ navigation }) => (
                     <CoachAssignmentScreen
+                      assignmentStatus={session.assignmentStatus}
+                      onRequestUnavailable={(status) => {
+                        if (status === "pending") {
+                          navigation.replace("PendingCoach");
+                          return;
+                        }
+                        navigation.replace("TraineeTabs");
+                      }}
                       onSendRequest={async (coach) => {
                         const user = auth.currentUser;
                         if (!user) throw new Error("Please login again.");
@@ -205,19 +220,10 @@ export function RootNavigator() {
               {() => <ProfileScreen session={session} />}
             </Stack.Screen>
             <Stack.Screen name="TraineeDetail" component={TraineeDetailScreen} />
+            <Stack.Screen name="AdjustPlan" component={AdjustPlanScreen} />
             <Stack.Screen name="PrescribeWorkout" component={PrescribeWorkoutScreen} />
             <Stack.Screen name="CreateProgram" component={CreateProgramScreen} />
             <Stack.Screen name="PrescribeMeal" component={PrescribeMealScreen} />
-            <Stack.Screen name="CoachChat">
-              {({ route }) => (
-                <CoachChatScreen
-                  coachId={route.params.coachId}
-                  traineeId={route.params.traineeId}
-                  traineeName={route.params.traineeName}
-                  threadId={route.params.threadId}
-                />
-              )}
-            </Stack.Screen>
             <Stack.Screen name="CreateTemplate" component={CreateTemplateScreen} />
             <Stack.Screen name="TemplateDetail" component={TemplateDetailScreen} />
             <Stack.Screen name="EditCoachProfile" component={EditCoachProfileScreen} />

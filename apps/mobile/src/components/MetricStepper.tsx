@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     marginBottom: 12 
   },
   label: { 
-    color: colors.textMuted, 
+    color: colors.textMuted,
     fontSize: 14, 
     fontWeight: "600", 
     marginBottom: 4 
@@ -41,11 +41,11 @@ const styles = StyleSheet.create({
   stepperContainer: { 
     flexDirection: "row", 
     alignItems: "center", 
-    backgroundColor: "#1c1c1e", 
+    backgroundColor: colors.surfaceInset,
     borderRadius: 12, 
     padding: 4, 
     borderWidth: 1, 
-    borderColor: "#2c2c2e" 
+    borderColor: colors.surfaceInset
   },
   stepperBtn: { 
     width: 36, 

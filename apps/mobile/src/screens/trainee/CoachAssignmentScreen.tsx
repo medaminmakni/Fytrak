@@ -4,14 +4,21 @@ import { ScreenShell } from "../../components/ScreenShell";
 import { colors } from "../../theme/colors";
 import { Ionicons } from "@expo/vector-icons";
 import { fetchCoaches, type Coach, type CoachRequestPayload } from "../../services/userSession";
+import type { AssignmentStatus } from "../../state/types";
 
 const CATEGORIES = ["All", "Powerlifting", "Bodybuilding", "Weight Loss", "Yoga", "Endurance"];
 
 type CoachAssignmentScreenProps = {
   onSendRequest: (coach: CoachRequestPayload) => Promise<void>;
+  assignmentStatus: AssignmentStatus;
+  onRequestUnavailable: (status: "pending" | "assigned") => void;
 };
 
-export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenProps) {
+export function CoachAssignmentScreen({
+  onSendRequest,
+  assignmentStatus,
+  onRequestUnavailable,
+}: CoachAssignmentScreenProps) {
   const [mode, setMode] = useState<"invite" | "discover" | "onboarding">("discover");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,6 +32,12 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
 
   const [coachesList, setCoachesList] = useState<Coach[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (assignmentStatus === "pending" || assignmentStatus === "assigned") {
+      onRequestUnavailable(assignmentStatus);
+    }
+  }, [assignmentStatus, onRequestUnavailable]);
 
   useEffect(() => {
     const loadCoaches = async () => {
@@ -70,7 +83,7 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
   }, [coachCode, coachEmail, mode, selectedCoachId]);
 
   const handleSendRequest = async () => {
-    if (!selectedCoach || isSubmitting) return;
+    if (!selectedCoach || isSubmitting || assignmentStatus === "pending" || assignmentStatus === "assigned") return;
 
     try {
       setIsSubmitting(true);
@@ -189,7 +202,15 @@ export function CoachAssignmentScreen({ onSendRequest }: CoachAssignmentScreenPr
                         style={[styles.coachCard, isSelected && styles.coachCardActive]}
                       >
                         <View style={styles.coachAvatar}>
-                          <Text style={styles.avatarText}>{coach.name[0]}</Text>
+                          {coach.profileImageUrl ? (
+                            <Image
+                              source={{ uri: coach.profileImageUrl }}
+                              style={styles.avatarImage}
+                              accessibilityLabel={`${coach.name}'s profile photo`}
+                            />
+                          ) : (
+                            <Text style={styles.avatarText}>{coach.name[0]}</Text>
+                          )}
                           {coach.verified && (
                             <View style={styles.verifiedIcon}>
                               <Ionicons name="checkmark-sharp" size={10} color="#000" />
@@ -309,12 +330,12 @@ const styles = StyleSheet.create({
   },
   tabContainer: {
     flexDirection: "row",
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     borderRadius: 12,
     padding: 4,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   tab: {
     flex: 1,
@@ -371,12 +392,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   chip: {
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   chipActive: {
     backgroundColor: colors.primary,
@@ -394,13 +415,13 @@ const styles = StyleSheet.create({
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     borderRadius: 14,
     paddingHorizontal: 16,
     height: 52,
     gap: 12,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     marginBottom: 16,
   },
   searchInput: {
@@ -426,11 +447,11 @@ const styles = StyleSheet.create({
   },
   coachCard: {
     flexDirection: "row",
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
     alignItems: "center",
     gap: 16,
   },
@@ -442,7 +463,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: "#2c2c2e",
+    backgroundColor: colors.surfaceInset,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
@@ -452,6 +473,10 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 24,
     fontWeight: "900",
+  },
+  avatarImage: {
+    width: "100%",
+    height: "100%",
   },
   verifiedIcon: {
     position: "absolute",
@@ -464,7 +489,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1.5,
-    borderColor: "#161616",
+    borderColor: colors.surface,
   },
   coachInfo: {
     flex: 1,
@@ -483,7 +508,7 @@ const styles = StyleSheet.create({
   ratingBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#2c2c2e",
+    backgroundColor: colors.surfaceInset,
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
@@ -519,11 +544,11 @@ const styles = StyleSheet.create({
   },
   inviteForm: {
     gap: 20,
-    backgroundColor: "#161616",
+    backgroundColor: colors.surface,
     borderRadius: 20,
     padding: 20,
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   inputGroup: {
     gap: 8,
@@ -557,7 +582,7 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: "#2c2c2e",
+    backgroundColor: colors.surfaceInset,
   },
   dividerText: {
     color: colors.textDim,
@@ -571,10 +596,10 @@ const styles = StyleSheet.create({
   messageInput: {
     height: 100,
     textAlignVertical: "top",
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     color: "#ffffff",
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   submitBtn: {
     backgroundColor: colors.primary,
@@ -614,11 +639,11 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 24,
-    backgroundColor: "#1c1c1e",
+    backgroundColor: colors.surfaceInset,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#2c2c2e",
+    borderColor: colors.surfaceInset,
   },
   requestSentTitle: {
     color: "#ffffff",
@@ -633,7 +658,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
   errorText: {
-    color: "#ff4444",
+    color: colors.danger,
     fontSize: 13,
     fontWeight: "700",
     textAlign: "center",

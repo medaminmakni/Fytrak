@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginStart: 4 },
   sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   metricsGrid: { flexDirection: 'row', gap: spacing.md },
-  metricBox: { flex: 1, backgroundColor: "#111", borderRadius: radius.lg, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: "#222" },
+  metricBox: { flex: 1, backgroundColor: colors.surface, borderRadius: radius.lg, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: "#222" },
   metricIconBg: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   metricLabel: { color: colors.textMuted, fontSize: 11, fontWeight: "800", letterSpacing: 0.5, marginBottom: 2 },
   metricValue: { color: "#fff", fontSize: 16, fontWeight: "900" },

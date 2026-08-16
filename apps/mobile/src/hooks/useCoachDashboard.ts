@@ -11,10 +11,7 @@ import {
     type CoachTrainee,
 } from "../services/userSession";
 import { useCurrentUser } from "./useCurrentUser";
-import {
-    buildCoachDashboardIntelligence,
-    type CoachClientIntelligence
-} from "../features/coaching/coachIntelligence";
+import type { CoachClientSignal } from "../features/coaching/coachIntelligence";
 
 export function useCoachDashboard() {
     const uid = useCurrentUser();
@@ -89,18 +86,33 @@ export function useCoachDashboard() {
     // flash on every Firestore snapshot for a microsecond computation.
     const clientSignals = useMemo(() => toCoachClientSignals(assigned), [assigned]);
 
-    const dashboard = useMemo(() => buildCoachDashboardIntelligence(clientSignals), [clientSignals]);
-
-    const clientIntelligenceById = useMemo(() => {
-        return new Map<string, CoachClientIntelligence>(dashboard.clients.map((client) => [client.traineeId, client]));
-    }, [dashboard.clients]);
-
-    const atRiskClients = useMemo(() => {
-        return dashboard.clients.filter((client) => client.risk !== "low");
-    }, [dashboard.clients]);
+    /*
+     * The roster signals, keyed by trainee. Raw facts only.
+     *
+     * This used to be `buildCoachDashboardIntelligence(clientSignals)`, whose
+     * output — `complianceScore`, a HIGH/MEDIUM/LOW `risk`, `riskReason`,
+     * `suggestedNudge`, `avgCompliance` — reached the coach dashboard through
+     * `atRiskClients`, `checkInsDue` and `stats.consistency`.
+     *
+     * None of it was provable. `complianceScore` is 55 points for workouts
+     * logged, 25 for meals *logged* (a count, never compared against a target)
+     * and 20 for protein, of which 12 are paid out for free to any client with
+     * no protein target set. `risk` is that number thresholded, and `riskReason`
+     * printed the result as though it were an observation.
+     *
+     * The scoring functions have since been deleted outright: once this
+     * dashboard stopped reading them, a grep found no caller anywhere in the
+     * app. Attention here is classified by `describeSignalActivity` alone, and
+     * only its `silent` branch counts.
+     */
+    const clientSignalById = useMemo(() => {
+        return new Map<string, CoachClientSignal>(
+            clientSignals.map((signal) => [signal.traineeId, signal]),
+        );
+    }, [clientSignals]);
 
     const recentActivity = useMemo(() => {
-        return dashboard.clients
+        return clientSignals
             .filter((client) => client.lastWorkoutAt)
             .sort((a, b) => {
                 const aTime = a.lastWorkoutAt ? a.lastWorkoutAt.getTime() : 0;
@@ -108,38 +120,20 @@ export function useCoachDashboard() {
                 return bTime - aTime;
             })
             .slice(0, 4);
-    }, [dashboard.clients]);
-
-    const checkInsDue = useMemo(() => {
-        return dashboard.clients.filter((client) => client.risk === "high").length;
-    }, [dashboard.clients]);
+    }, [clientSignals]);
 
     const unreadMessages = useMemo(() => {
         return threadSummaries.reduce((sum, thread) => sum + thread.unreadByCoach, 0);
     }, [threadSummaries]);
 
     const stats = useMemo(() => {
+        // `consistency: dashboard.avgCompliance` was removed with the risk
+        // engine. Both remaining values are counts of rows the coach can open.
         return {
             totalClients: assigned.length,
             newLeads: pending.length,
-            consistency: dashboard.avgCompliance,
         };
-    }, [assigned.length, dashboard.avgCompliance, pending.length]);
-
-    const insights = useMemo(() => {
-        if (pending.length > 0) {
-            return [
-                {
-                    title: "New Opportunity",
-                    sub: `${pending.length} pending request${pending.length === 1 ? "" : "s"} waiting for your review.`,
-                    icon: "mail-outline",
-                    tone: "warning" as const,
-                },
-                ...dashboard.insights,
-            ];
-        }
-        return dashboard.insights;
-    }, [dashboard.insights, pending.length]);
+    }, [assigned.length, pending.length]);
 
     const handleAction = useCallback(async (traineeId: string, name: string, accept: boolean) => {
         const action = accept ? "Accept" : "Reject";
@@ -193,12 +187,9 @@ export function useCoachDashboard() {
         assigned,
         isLoading,
         stats,
-        insights,
         unreadMessages,
-        checkInsDue,
-        atRiskClients,
         recentActivity,
-        clientIntelligenceById,
+        clientSignalById,
         handleAction,
         handleReviewRequest,
     };

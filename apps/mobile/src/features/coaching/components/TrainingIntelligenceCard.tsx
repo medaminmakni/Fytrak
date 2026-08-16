@@ -1,10 +1,11 @@
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { ActivityIndicator, View, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Typography } from "../../../components/Typography";
 import { colors } from "../../../theme/colors";
 import { spacing, radius } from "../../../theme/tokens";
 import type { WorkoutLog } from "../../../types/domain";
+import type { DataStatus } from "../../../hooks/useTraineeDetailData";
 
 type TrainingIntelligenceCardProps = {
   /**
@@ -13,15 +14,23 @@ type TrainingIntelligenceCardProps = {
    * this is a list — rendering only the first would understate their work.
    */
   workouts?: WorkoutLog[];
-  /** True when the read failed. Distinct from "logged nothing". */
-  hasError?: boolean;
+  /**
+   * The full load state of the workouts dimension.
+   *
+   * This was `hasError?: boolean`, which is only two of the four states. While
+   * the read was still in flight the card received `hasError={false}` and the
+   * default `workouts = []`, so it rendered "No workout logged today" about a
+   * day it had not finished reading — and if that read then failed at the 12s
+   * timeout, the sentence had already been on screen for twelve seconds.
+   */
+  status?: DataStatus;
   /** Label for the selected day, e.g. "today" or "Mon 14 Jul". */
   dayLabel?: string;
 };
 
 export function TrainingIntelligenceCard({
   workouts = [],
-  hasError = false,
+  status = "loaded",
   dayLabel = "today",
 }: TrainingIntelligenceCardProps) {
   return (
@@ -31,23 +40,29 @@ export function TrainingIntelligenceCard({
           <Ionicons name="barbell" size={14} color={colors.danger} />
         </View>
         <Typography variant="label" color={colors.danger} style={styles.title}>TRAINING ACTIVITY</Typography>
-        {workouts.length > 1 && (
+        {status === "loaded" && workouts.length > 1 && (
           <Typography variant="label" color={colors.textDim} style={styles.countBadge}>
             {workouts.length} SESSIONS
           </Typography>
         )}
       </View>
 
-      {hasError ? (
+      {status === "error" ? (
         <View style={styles.errorCard}>
           <Ionicons name="warning-outline" size={16} color={colors.warning} />
           <Typography variant="label" color={colors.warning}>
-            Could not load training data. This is not the same as no training.
+            Unavailable — could not load
           </Typography>
+        </View>
+      ) : status === "loading" ? (
+        <View style={styles.emptyCard}>
+          <ActivityIndicator size="small" color={colors.textTertiary} />
+          <Typography variant="label" color={colors.textDim}>Loading…</Typography>
         </View>
       ) : workouts.length === 0 ? (
         <View style={styles.emptyCard}>
-          <Typography variant="label" color={colors.textDim}>No workout logged {dayLabel}</Typography>
+          {/* The single source of the empty workout sentence. */}
+          <Typography variant="label" color={colors.textDim}>No workout logged this day</Typography>
         </View>
       ) : (
         workouts.map((workout) => (
@@ -99,5 +114,5 @@ const styles = StyleSheet.create({
   exerciseList: { gap: spacing.sm },
   exItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgDark, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderSubtle },
   exName: { fontSize: 13, flex: 1 },
-  emptyCard: { backgroundColor: colors.bgDark, borderRadius: radius.xl, padding: spacing["3xl"], alignItems: 'center', borderWidth: 1, borderColor: colors.borderSubtle, borderStyle: 'dashed' },
+  emptyCard: { backgroundColor: colors.bgDark, borderRadius: radius.xl, padding: spacing["3xl"], alignItems: 'center', gap: spacing.sm, borderWidth: 1, borderColor: colors.borderSubtle, borderStyle: 'dashed' },
 });

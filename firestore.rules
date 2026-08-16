@@ -2,6 +2,24 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    /**
+     * A client-local date key: `YYYY-MM-DD`, with month and day BOUNDED.
+     *
+     * Every site below previously used `^[0-9]{4}-[0-9]{2}-[0-9]{2}$`, which
+     * accepts `2026-13-01` and `2026-01-99`. Five rules shared that hole and
+     * none of them caught it, because the rules suite had never been executed.
+     *
+     * The bounds are as tight as the rules language allows: month 01–12, day
+     * 01–31. It still accepts 31 February — rules cannot do calendar
+     * arithmetic. The client validates real dates with `isValidDateKey`, which
+     * parses and round-trips them; this stops the malformed values that would
+     * otherwise be stored and read back as a day that cannot exist.
+     */
+    function isDateKey(value) {
+      return value is string
+        && value.matches("^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$");
+    }
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -78,14 +96,94 @@ service cloud.firestore {
         && request.resource.data.updatedAt == request.time;
     }
 
+    // The assigned coach acknowledging a pain report.
+    //
+    // Split from `ownerCanRefreshActivitySummary` deliberately: the CLIENT
+    // writes the pain report, and the COACH clears it. A client who could write
+    // these keys could silently dismiss their own injury warning before their
+    // coach ever saw it, which is the one thing this signal exists to prevent.
+    //
+    // The acknowledgement must name the report it is answering. Without that,
+    // a coach could write any date key and permanently suppress the queue:
+    // `isPainPending` is `lastPainAt > lastPainAcknowledgedAt`, so a single
+    // unmatched acknowledgement clears every future report until the client
+    // logs pain again.
+    function assignedCoachCanAcknowledgePain(userId) {
+      let before = resource.data.get("clientSummary", {});
+      let after = request.resource.data.clientSummary;
+      return isAssignedCoach(userId)
+        && changedUserKeys().hasOnly(["clientSummary"])
+        && after.diff(before).affectedKeys().hasOnly([
+            "lastPainAcknowledgedAt",
+            "lastPainAcknowledgedByCoachId",
+            "lastPainAcknowledgedDateKey"
+          ])
+        // There must be a report to acknowledge. Both halves are required: the
+        // date key is what the acknowledgement is matched against, and the
+        // timestamp is what the queue compares.
+        && "lastPainDateKey" in before
+        && before.lastPainDateKey is string
+        && "lastPainAt" in before
+        && before.lastPainAt is timestamp
+        // Answer THIS report, not a future one. A coach who acknowledges a day
+        // the client never reported is dismissing something that has not
+        // happened yet.
+        && after.lastPainAcknowledgedDateKey == before.lastPainDateKey
+        // Server clock only — a client-supplied time could be back-dated to sit
+        // before the report and leave it permanently "acknowledged".
+        && after.lastPainAcknowledgedAt == request.time
+        // Belt and braces on the same point: an acknowledgement cannot predate
+        // the report it answers, whatever the clock says.
+        && request.time >= before.lastPainAt
+        && after.lastPainAcknowledgedByCoachId == request.auth.uid
+        && isDateKey(after.lastPainAcknowledgedDateKey);
+    }
+
+    /*
+     * A workout's program-source claim, if it makes one.
+     *
+     * All four fields or none. Bounded strings, and a date key that is a real
+     * `YYYY-MM-DD` — the same shape every other client-local date in this file
+     * carries, so a completion can never be filed against an unparseable day.
+     */
+    function workoutSourceIsWellFormed() {
+      let data = request.resource.data;
+      return !("sourceType" in data)
+        ? !("sourceProgramId" in data)
+            && !("sourceProgramSessionId" in data)
+            && !("sourceScheduledDateKey" in data)
+        : data.sourceType == "program"
+            && data.sourceProgramId is string
+            && data.sourceProgramId.size() > 0
+            && data.sourceProgramId.size() <= 128
+            && data.sourceProgramSessionId is string
+            && data.sourceProgramSessionId.size() > 0
+            && data.sourceProgramSessionId.size() <= 128
+            && isDateKey(data.sourceScheduledDateKey);
+    }
+
     function ownerCanRefreshActivitySummary() {
       return changedUserKeys().hasOnly(["clientSummary"])
         && request.resource.data.clientSummary
           .diff(resource.data.get("clientSummary", {})).affectedKeys().hasOnly([
-            "workoutsLast7Days", "lastWorkoutAt", "mealsLast7Days",
-            "avgDailyProtein", "lastMealAt", "updatedAt"
+            "workoutsLast7Days", "lastWorkoutAt", "lastWorkoutDateKey",
+            "mealsLast7Days", "avgDailyProtein", "lastMealAt", "updatedAt",
+            // Pain, surfaced to the coach's queue without a per-client
+            // listener. The summary doc is already read for the whole roster,
+            // so this costs no extra reads and needs no scheduler. Bounded:
+            // one flag, one short note, one date key.
+            "lastPainAt", "lastPainNote", "lastPainDateKey"
           ])
-        && request.resource.data.clientSummary.updatedAt == request.time;
+        && request.resource.data.clientSummary.updatedAt == request.time
+        // The note is the client's own words and reaches a coach's screen, so
+        // it is length-bounded here as well as in the client.
+        && (!("lastPainNote" in request.resource.data.clientSummary)
+            || (request.resource.data.clientSummary.lastPainNote is string
+                && request.resource.data.clientSummary.lastPainNote.size() <= 200))
+        && (!("lastPainDateKey" in request.resource.data.clientSummary)
+            || isDateKey(request.resource.data.clientSummary.lastPainDateKey))
+        && (!("lastWorkoutDateKey" in request.resource.data.clientSummary)
+            || isDateKey(request.resource.data.clientSummary.lastWorkoutDateKey));
     }
 
     // V0 has no trusted runtime backend. Relationship transitions therefore
@@ -265,6 +363,22 @@ service cloud.firestore {
       );
     }
 
+    function revisionHasMatchingNewPrescription(userId) {
+      let prescriptionId = request.resource.data.prescriptionId;
+      let workoutPath = /databases/$(database)/documents/users/$(userId)/prescribedWorkouts/$(prescriptionId);
+      let mealPath = /databases/$(database)/documents/users/$(userId)/prescribed_meals/$(prescriptionId);
+      return request.resource.data.kind == "workout"
+        ? !exists(workoutPath)
+          && getAfter(workoutPath).data.coachId == request.auth.uid
+          && getAfter(workoutPath).data.scheduledDateKey == request.resource.data.effectiveFromDateKey
+          && getAfter(workoutPath).data.status == "published"
+        : request.resource.data.kind == "nutrition"
+          && !exists(mealPath)
+          && getAfter(mealPath).data.coachId == request.auth.uid
+          && getAfter(mealPath).data.scheduledDateKey == request.resource.data.effectiveFromDateKey
+          && getAfter(mealPath).data.status == "published";
+    }
+
     function programScheduleIsWellFormed() {
       return (
         !("startDateKey" in request.resource.data)
@@ -436,6 +550,9 @@ service cloud.firestore {
         || ownerCanOpenCoachRequest(userId)
         || ownerCanCancelCoachRequest(userId)
         || coachCanResolveUserRequest(userId)
+        // Coach-only, and NOT reachable through the isOwner() branch above:
+        // a client must not be able to acknowledge their own pain report.
+        || assignedCoachCanAcknowledgePain(userId)
         || participantCanDetachEndedAssignment(userId)
       );
       allow delete: if false;
@@ -453,9 +570,23 @@ service cloud.firestore {
         allow create, update, delete: if isOwner(userId);
       }
 
+      /*
+       * The trainee owns their own logs, exactly as before.
+       *
+       * What is new is that a log may claim to satisfy a program session. That
+       * claim is what the coach's completion view reads, so its shape is
+       * validated: the four source fields must arrive together, well formed,
+       * or not at all. A half-populated claim would point at nothing.
+       *
+       * The claim is NOT authenticated against the program document — a
+       * `get()` per workout write is a read the free tier does not need to
+       * spend, and the blast radius is bounded: a trainee can only mark their
+       * OWN session complete, which is a thing they can already do by training.
+       */
       match /workouts/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
-        allow create, update, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId) && workoutSourceIsWellFormed();
+        allow delete: if isOwner(userId);
       }
 
       match /meals/{docId} {
@@ -480,28 +611,60 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      /*
+       * Prescriptions are APPEND-ONLY for the coach.
+       *
+       * The coach update branch is gone. It permitted an assigned coach to
+       * rewrite the content of any existing prescription, including one for a
+       * day the client had already trained — so the record of what they were
+       * told to do could be changed after the fact, silently, with nothing
+       * anywhere marking that it had happened. A grep of the app found no coach
+       * flow that used it: the only writers are `savePrescribedWorkout` and
+       * `saveAdjustment`, both creates.
+       *
+       * An adjustment therefore never edits. It writes a NEW dated document,
+       * and the resolver picks the winner for that day. History stays intact
+       * because nothing that already exists can be touched.
+       *
+       * The trainee keeps exactly the narrow completion update they had.
+       */
       match /prescribedWorkouts/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
         // Only the assigned coach may author a prescription. The trainee may
         // only flip the completion flags — previously the trainee could forge a
         // prescription with an arbitrary coachId/title/exercises.
-        allow create: if isAssignedCoach(userId) && scheduleFieldsAreWellFormed();
-        allow update: if (isAssignedCoach(userId) && scheduleFieldsAreWellFormed())
-          || (isOwner(userId) && traineeCanCompletePrescription());
+        allow create: if isAssignedCoach(userId)
+          && request.resource.data.coachId == request.auth.uid
+          && scheduleFieldsAreWellFormed();
+        allow update: if isOwner(userId) && traineeCanCompletePrescription();
         allow delete: if false;
       }
 
       match /prescribed_meals/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
-        allow create: if isAssignedCoach(userId) && scheduleFieldsAreWellFormed();
-        allow update: if (isAssignedCoach(userId) && scheduleFieldsAreWellFormed())
-          || (isOwner(userId) && traineeCanApplyPrescribedMeal());
+        allow create: if isAssignedCoach(userId)
+          && request.resource.data.coachId == request.auth.uid
+          && scheduleFieldsAreWellFormed();
+        allow update: if isOwner(userId) && traineeCanApplyPrescribedMeal();
         allow delete: if false;
       }
 
+      /*
+       * Programs are CREATE-ONLY in V0.
+       *
+       * A program is one document holding a session tree addressed by
+       * `dayOffset` from `startDateKey`. Any update can re-date every session
+       * it contains, including sessions on days the client has already trained,
+       * and there is no way for rules to tell a harmless edit from that. This
+       * is also why Adjust plan refuses programs: changing one safely needs
+       * per-version program documents, which V0 does not have.
+       */
       match /programs/{docId} {
         allow read: if isOwner(userId) || isAssignedCoach(userId);
-        allow create, update: if isAssignedCoach(userId) && programScheduleIsWellFormed();
+        allow create: if isAssignedCoach(userId)
+          && request.resource.data.coachId == request.auth.uid
+          && programScheduleIsWellFormed();
+        allow update: if false;
         allow delete: if false;
       }
 
@@ -530,6 +693,47 @@ service cloud.firestore {
         allow create: if isAssignedCoach(userId);
         allow update: if isAssignedCoach(userId) || traineeCanUpdateCheckInTask(userId);
         allow delete: if false;
+      }
+
+      // Dated, reasoned changes to a client's plan.
+      //
+      // The client reads them — a plan that changed under them without
+      // explanation is the complaint this collection exists to answer — but only
+      // their assigned coach writes them.
+      //
+      // Append-only by design. A revision is a record of a decision that was
+      // made; editing one would rewrite history the client already trained
+      // against, so there is no update and no delete for anybody. The
+      // effective-date check ("never a day that has already closed") lives in
+      // the client, because rules cannot evaluate the trainee's local calendar.
+      match /planRevisions/{docId} {
+        allow read: if isOwner(userId) || isAssignedCoach(userId);
+        allow create: if isAssignedCoach(userId)
+          && request.resource.data.keys().hasOnly([
+            "traineeId", "coachId", "kind", "effectiveFromDateKey",
+            "prescriptionId", "reason", "summary", "createdAt"
+          ])
+          && request.resource.data.traineeId == userId
+          && request.resource.data.coachId == request.auth.uid
+          // Only the two kinds that can actually change something. A "program"
+          // revision would be a record claiming a change that did not happen.
+          && request.resource.data.kind in ["workout", "nutrition"]
+          && isDateKey(request.resource.data.effectiveFromDateKey)
+          // The prescription this revision describes. A revision that names no
+          // prescription is exactly the empty record this phase removed.
+          && request.resource.data.prescriptionId is string
+          && request.resource.data.prescriptionId.size() > 0
+          && request.resource.data.reason is string
+          && request.resource.data.reason.size() > 0
+          && request.resource.data.reason.size() <= 500
+          && request.resource.data.summary is string
+          && request.resource.data.summary.size() <= 500
+          && request.resource.data.createdAt == request.time
+          // A revision is valid only as part of a batch that creates the new,
+          // matching prescription. Pointing at an old or missing document is
+          // the revision-only state this flow was built to eliminate.
+          && revisionHasMatchingNewPrescription(userId);
+        allow update, delete: if false;
       }
     }
 

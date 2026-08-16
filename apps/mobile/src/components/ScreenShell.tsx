@@ -8,7 +8,12 @@ import { IconButton } from "./IconButton";
 import { ContextMenu, ContextMenuItem } from "./ContextMenu";
 
 type ScreenShellProps = PropsWithChildren<{
-  title: ReactNode;
+  /**
+   * Omit to render no header at all. Auth screens have no page title — the
+   * wordmark is the identity, and it belongs with the form rather than pinned
+   * above it.
+   */
+  title?: ReactNode;
   /**
    * A plain string gets the standard subtitle style. Pass a node only when the
    * line needs structure the style cannot carry — the chat header's verified
@@ -50,9 +55,18 @@ export function ScreenShell({
   children,
 }: ScreenShellProps) {
   const [menuVisible, setMenuVisible] = useState(false);
+  const hasHeader =
+    title !== undefined ||
+    subtitle !== undefined ||
+    Boolean(leftActionIcon) ||
+    Boolean(rightActionIcon) ||
+    Boolean(rightActionImageUri) ||
+    Boolean(headerAccessory);
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
       <View style={[styles.container, centered && styles.containerCentered]}>
+        {hasHeader ? (
         <View style={[styles.header, centered && { alignItems: "center" }]}>
           <View style={[styles.headerTitleRow, centered && { justifyContent: "center", width: "100%" }]}>
             {leftActionIcon && onLeftAction && (
@@ -63,10 +77,10 @@ export function ScreenShell({
                 style={styles.leftButton}
               />
             )}
-            
+
             {typeof title === "string" ? (
-              <Text 
-                numberOfLines={1} 
+              <Text
+                numberOfLines={1}
                 style={[styles.title, titleStyle, !centered && { flex: 1 }, centered && { textAlign: "center" }]}
               >
                 {title}
@@ -86,7 +100,7 @@ export function ScreenShell({
                 accessibilityLabel={rightActionImageUri ? "Open profile" : "Open action"}
                 hitSlop={8}
                 style={[
-                  styles.headerButton, 
+                  styles.headerButton,
                   rightActionImageUri && styles.avatarButton,
                   rightActionMenu && styles.menuButton
                 ]}
@@ -117,6 +131,7 @@ export function ScreenShell({
             subtitle ?? null
           )}
         </View>
+        ) : null}
         <View style={[styles.content, centered && styles.contentCentered, contentStyle]}>{children}</View>
       </View>
       {rightActionMenu && (
